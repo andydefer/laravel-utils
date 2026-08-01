@@ -1,4 +1,3 @@
-```markdown
 # Laravel Utils
 
 [![Latest Version](https://img.shields.io/packagist/v/andydefer/laravel-utils.svg?style=flat-square)](https://packagist.org/packages/andydefer/laravel-utils)
@@ -117,4 +116,4 @@ MIT © [Andy Defer](https://github.com/andydefer)
 
 - `andydefer/domain-structures` - Interfaces et classes de base pour les objets transformables
 - `illuminate/database` - Pour les attributs Eloquent
-```
+---
