@@ -1,10 +1,5 @@
 # Laravel Utils
 
-[![Latest Version](https://img.shields.io/packagist/v/andydefer/laravel-utils.svg?style=flat-square)](https://packagist.org/packages/andydefer/laravel-utils)
-[![Total Downloads](https://img.shields.io/packagist/dt/andydefer/laravel-utils.svg?style=flat-square)](https://packagist.org/packages/andydefer/laravel-utils)
-[![PHP Version](https://img.shields.io/packagist/php-v/andydefer/laravel-utils.svg?style=flat-square)](https://packagist.org/packages/andydefer/laravel-utils)
-[![License](https://img.shields.io/packagist/l/andydefer/laravel-utils.svg?style=flat-square)](https://packagist.org/packages/andydefer/laravel-utils)
-
 ## Description
 
 Package d'utilitaires pour Laravel offrant des proxies pour l'hydratation automatique d'objets `Transformable` (Value Objects, Records, DTOs) depuis des sources variées (tableaux, JSON, colonnes de base de données).
