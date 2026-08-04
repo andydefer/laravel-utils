@@ -1,8 +1,30 @@
 # Laravel Utils
 
+## Table des matières
+
+1. [Description](#description)
+2. [Installation](#installation)
+3. [Prérequis](#prérequis)
+4. [Fonctionnalités](#fonctionnalités)
+   - [4.1 TransformableProxy](#transformableproxy)
+   - [4.2 AttributeProxy](#attributeproxy)
+   - [4.3 GitPushDirective](#gitpushdirective)
+5. [Configuration](#configuration)
+   - [5.1 Configuration des dépôts Git](#configuration-des-dépôts-git)
+6. [Documentation](#documentation)
+7. [Tests](#tests)
+8. [Contribuer](#contribuer)
+9. [Licence](#licence)
+10. [Auteur](#auteur)
+11. [Dépendances](#dépendances)
+
+---
+
 ## Description
 
-Package d'utilitaires pour Laravel offrant des proxies pour l'hydratation automatique d'objets `Transformable` (Value Objects, Records, DTOs) depuis des sources variées (tableaux, JSON, colonnes de base de données).
+Package d'utilitaires pour Laravel offrant des proxies pour l'hydratation automatique d'objets `Transformable` (Value Objects, Records, DTOs) depuis des sources variées (tableaux, JSON, colonnes de base de données) ainsi qu'une directive CLI pour automatiser les pushes Git vers des dépôts distants.
+
+---
 
 ## Installation
 
@@ -10,11 +32,16 @@ Package d'utilitaires pour Laravel offrant des proxies pour l'hydratation automa
 composer require andydefer/laravel-utils
 ```
 
+---
+
 ## Prérequis
 
 - PHP 8.1 ou supérieur
-- Laravel 10.x, 11.x ou 12.x
+- Laravel 10.x, 11.x, 12.x, 13.x, 14.x ou 15.x
 - `andydefer/domain-structures` ^1.0
+- `pngquant` et `jpegoptim` pour la compression CLI (optionnel)
+
+---
 
 ## Fonctionnalités
 
@@ -80,16 +107,75 @@ echo $user->coordinates->lat;   // 48.8566
 echo $user->settings->theme;    // 'dark'
 ```
 
+### GitPushDirective
+
+Directive CLI pour pousser du code vers des dépôts Git distants configurés avec mode interactif et options avancées.
+
+```bash
+# Mode interactif (demande le message, les cibles et les dossiers)
+./bin/afya ugp
+
+# Push avec simulation (dry-run)
+./bin/afya ugp [github] --dry-run <message="Fix bug">
+
+# Push avec force-with-lease
+./bin/afya ugp [github] --force-with-lease <message="Hotfix">
+
+# Push sans tests
+./bin/afya ugp [github, o2switch] --no-tests <message="Feature: Ajout API">
+```
+
+**Paramètres :**
+
+| Paramètre | Description |
+|-----------|-------------|
+| `{sources*}` | Alias des dépôts configurés (vide = push vers tous) |
+| `{folders*}` | Dossiers à ajouter (vide = tous les fichiers) |
+| `--no-tests` | Ignorer l'exécution des tests |
+| `--force-with-lease` | Utiliser `--force-with-lease` au lieu de `--force` |
+| `--force` | Forcer le push même si les tests échouent |
+| `--no-interactive` | Désactiver le mode interactif |
+| `--dry-run` | Simuler l'opération sans rien exécuter |
+
+---
+
+## Configuration
+
+### Configuration des dépôts Git
+
+```php
+// config/utils.php
+return [
+    'repositories' => [
+        'github' => 'git@github.com:andydefer/afya-medical.git',
+        'o2switch' => 'ssh://user@domain.com/home/user/git/repo.git',
+    ],
+];
+```
+
+### Publication de la configuration
+
+```bash
+php artisan vendor:publish --tag=utils-config
+```
+
+---
+
 ## Documentation
 
 - [TransformableProxy - Référence Technique](docs/TransformableProxy.md)
 - [AttributeProxy - Référence Technique](docs/AttributeProxy.md)
+- [GitPushDirective - Référence Technique](docs/GitPushDirective.md)
+
+---
 
 ## Tests
 
 ```bash
 composer test
 ```
+
+---
 
 ## Contribuer
 
@@ -99,16 +185,24 @@ composer test
 4. Pusher (`git push origin feature/ma-fonctionnalite`)
 5. Ouvrir une Pull Request
 
+---
+
 ## Licence
 
 MIT © [Andy Defer](https://github.com/andydefer)
+
+---
 
 ## Auteur
 
 - **Andy Defer** - [GitHub](https://github.com/andydefer)
 
+---
+
 ## Dépendances
 
 - `andydefer/domain-structures` - Interfaces et classes de base pour les objets transformables
 - `illuminate/database` - Pour les attributs Eloquent
+- `symfony/process` - Pour l'exécution des commandes Git
+- `andydefer/laravel-directive` - Pour l'infrastructure des directives CLI
 ---
