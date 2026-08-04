@@ -17,5 +17,7 @@ return [
     */
     'repositories' => [
         'github' => env('GIT_REPO_GITHUB', 'git@github.com:andydefer/laravel-utils.git'),
+        'o2switch' => env('GIT_REPO_O2SWITCH', 'ssh://kaan9852@kaan9852.odns.fr/home/kaan9852/git/afya-medical.com'),
+
     ],
 ];

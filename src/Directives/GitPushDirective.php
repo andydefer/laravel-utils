@@ -24,7 +24,9 @@ final class GitPushDirective extends AbstractDirective
         return 'utils:git-push 
                 {message=?}#"Commit message" 
                 {sources*}#"Repository aliases to push to (empty = push to all)" 
+                {folders*}#"Folders to add (empty = add all files)" 
                 {--no-tests}#"Skip running tests before push" 
+                {--force-with-lease}#"Use --force-with-lease instead of standard push" 
                 {--force}#"Force push even if tests fail"';
     }
 
@@ -59,7 +61,9 @@ final class GitPushDirective extends AbstractDirective
     {
         $message = $this->getArgument('message');
         $sources = $this->getVariadic('sources');
+        $folders = $this->getVariadic('folders');
         $noTests = $this->getFlag('no-tests');
+        $forceWithLease = $this->getFlag('force-with-lease');
         $force = $this->getFlag('force');
 
         $isInteractive = $message === null || empty($sources);
@@ -73,37 +77,33 @@ final class GitPushDirective extends AbstractDirective
                 ->line()
                 ->ask('💬 Message du commit :', 'message', null, 'yellow')
                 ->multiChoice('🎯 Choisissez les cibles :', 'sources', array_keys($this->repositories), array_keys($this->repositories))
-                ->confirm('🧪 Exécuter les tests ?', 'tests', true)
                 ->submit();
 
             $message = $answers->get('message');
             $sources = $answers->get('sources');
-            $runTests = $answers->get('tests');
-        } else {
-            if (empty($sources)) {
-                $this->console->info('📋 Aucune cible spécifiée, push vers toutes les cibles...');
-                $this->console->line();
-
-                $confirm = $this->console->form()
-                    ->confirm('⚠️  Pousser vers toutes les cibles configurées ?', 'confirm', false)
-                    ->submit();
-
-                if (! $confirm->get('confirm')) {
-                    $this->console->error('❌ Opération annulée');
-
-                    return ExitCode::FAILURE;
-                }
-
-                $sources = array_keys($this->repositories);
-            }
-
-            $runTests = ! $noTests;
         }
 
         if ($message === null || trim($message) === '') {
             $this->console->error('❌ Le message du commit est obligatoire');
 
             return ExitCode::FAILURE;
+        }
+
+        if (empty($sources)) {
+            $this->console->info('📋 Aucune cible spécifiée, push vers toutes les cibles...');
+            $this->console->line();
+
+            $confirm = $this->console->form()
+                ->confirm('⚠️  Pousser vers toutes les cibles configurées ?', 'confirm', false)
+                ->submit();
+
+            if (! $confirm->get('confirm')) {
+                $this->console->error('❌ Opération annulée');
+
+                return ExitCode::FAILURE;
+            }
+
+            $sources = array_keys($this->repositories);
         }
 
         $validSources = $this->validateSources($sources);
@@ -113,7 +113,9 @@ final class GitPushDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        $this->displayConfiguration($message, $validSources, $runTests, $force);
+        $runTests = ! $noTests;
+
+        $this->displayConfiguration($message, $validSources, $folders, $runTests, $forceWithLease, $force);
 
         if ($runTests) {
             $testResult = $this->handleTests($force);
@@ -125,7 +127,7 @@ final class GitPushDirective extends AbstractDirective
             $this->console->line();
         }
 
-        $commitResult = $this->commitChanges($message);
+        $commitResult = $this->commitChanges($message, $folders);
         if ($commitResult !== ExitCode::SUCCESS) {
             $this->console->error('❌ Échec du commit');
 
@@ -135,7 +137,7 @@ final class GitPushDirective extends AbstractDirective
         $this->console->success('✅ Commit effectué avec succès');
         $this->console->line();
 
-        $pushResult = $this->pushToRemotes($validSources);
+        $pushResult = $this->pushToRemotes($validSources, $forceWithLease);
         if ($pushResult !== ExitCode::SUCCESS) {
             $this->console->error('❌ Échec du push');
 
@@ -175,14 +177,16 @@ final class GitPushDirective extends AbstractDirective
         return $valid;
     }
 
-    private function displayConfiguration(string $message, array $sources, bool $runTests, bool $force): void
+    private function displayConfiguration(string $message, array $sources, array $folders, bool $runTests, bool $forceWithLease, bool $force): void
     {
         $this->console->info('📋 Configuration :');
         $this->console->line();
         $this->console->keyValueWithValueColor([
             '💬 Message' => $message,
             '🎯 Cibles' => implode(', ', $sources),
+            '📁 Dossiers' => empty($folders) ? 'Tous les fichiers' : implode(', ', $folders),
             '🧪 Tests' => $runTests ? '✅ Activés' : '⏭️  Ignorés',
+            '🔒 Force-with-lease' => $forceWithLease ? '✅ Oui' : '❌ Non',
             '🔒 Force' => $force ? '✅ Oui' : '❌ Non',
         ], 'green');
         $this->console->line();
@@ -231,9 +235,18 @@ final class GitPushDirective extends AbstractDirective
         return $process->isSuccessful() ? ExitCode::SUCCESS : ExitCode::FAILURE;
     }
 
-    private function commitChanges(string $message): ExitCode
+    private function commitChanges(string $message, array $folders): ExitCode
     {
-        $process = new Process(['git', 'add', '.']);
+        if (empty($folders)) {
+            $process = new Process(['git', 'add', '.']);
+        } else {
+            $args = ['git', 'add'];
+            foreach ($folders as $folder) {
+                $args[] = $folder;
+            }
+            $process = new Process($args);
+        }
+
         $process->run();
 
         if (! $process->isSuccessful()) {
@@ -260,7 +273,7 @@ final class GitPushDirective extends AbstractDirective
         return ExitCode::SUCCESS;
     }
 
-    private function pushToRemotes(array $sources): ExitCode
+    private function pushToRemotes(array $sources, bool $forceWithLease): ExitCode
     {
         $process = new Process(['git', 'branch', '--show-current']);
         $process->run();
@@ -284,7 +297,16 @@ final class GitPushDirective extends AbstractDirective
 
             $this->console->info("   📤 Push vers {$source} ({$remoteUrl})...");
 
-            $process = new Process(['git', 'push', $remoteUrl, $branch]);
+            $args = ['git', 'push'];
+
+            if ($forceWithLease) {
+                $args[] = '--force-with-lease';
+            }
+
+            $args[] = $remoteUrl;
+            $args[] = $branch;
+
+            $process = new Process($args);
             $process->setTimeout(120);
             $process->run();
 
