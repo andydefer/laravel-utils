@@ -12,8 +12,9 @@
    - [4.4 GitDiffDirective](#gitdiffdirective)
    - [4.5 GitTagDirective](#gittagdirective)
 5. [Configuration](#configuration)
-   - [5.1 Configuration des dépôts Git](#configuration-des-dépôts-git)
-   - [5.2 Configuration des extensions](#configuration-des-extensions)
+   - [5.1 Publication de la configuration](#publication-de-la-configuration)
+   - [5.2 Configuration des dépôts Git](#configuration-des-dépôts-git)
+   - [5.3 Configuration des extensions](#configuration-des-extensions)
 6. [Documentation](#documentation)
 7. [Tests](#tests)
 8. [Contribuer](#contribuer)
@@ -34,6 +35,18 @@ Package d'utilitaires pour Laravel offrant des proxies pour l'hydratation automa
 ```bash
 composer require andydefer/laravel-utils
 ```
+
+### Publication de la configuration (optionnelle)
+
+Pour personnaliser les paramètres du package (dépôts Git, extensions, etc.) :
+
+```bash
+php artisan vendor:publish --tag=utils-config
+```
+
+Cette commande publiera le fichier `config/utils.php` dans votre application.
+
+**Note :** La publication de la configuration n'est pas obligatoire. Si vous ne publiez pas le fichier, le package utilisera les valeurs par défaut.
 
 ---
 
@@ -263,9 +276,13 @@ Directive CLI pour créer des tags de version Git avec versioning sémantique (S
 
 ### Publication de la configuration
 
+Pour personnaliser les paramètres du package, publiez d'abord le fichier de configuration :
+
 ```bash
 php artisan vendor:publish --tag=utils-config
 ```
+
+Cette commande crée le fichier `config/utils.php` dans votre application.
 
 ### Configuration des dépôts Git
 
@@ -357,3 +374,4 @@ MIT © [Andy Defer](https://github.com/andydefer)
 - `symfony/process` - Pour l'exécution des commandes Git
 - `andydefer/laravel-directive` - Pour l'infrastructure des directives CLI
 - `andydefer/console-writer` - Pour l'interface utilisateur en CLI
+```
