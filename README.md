@@ -9,8 +9,10 @@
    - [4.1 TransformableProxy](#transformableproxy)
    - [4.2 AttributeProxy](#attributeproxy)
    - [4.3 GitPushDirective](#gitpushdirective)
+   - [4.4 GitDiffDirective](#gitdiffdirective)
 5. [Configuration](#configuration)
    - [5.1 Configuration des dépôts Git](#configuration-des-dépôts-git)
+   - [5.2 Configuration des extensions](#configuration-des-extensions)
 6. [Documentation](#documentation)
 7. [Tests](#tests)
 8. [Contribuer](#contribuer)
@@ -22,7 +24,7 @@
 
 ## Description
 
-Package d'utilitaires pour Laravel offrant des proxies pour l'hydratation automatique d'objets `Transformable` (Value Objects, Records, DTOs) depuis des sources variées (tableaux, JSON, colonnes de base de données) ainsi qu'une directive CLI pour automatiser les pushes Git vers des dépôts distants.
+Package d'utilitaires pour Laravel offrant des proxies pour l'hydratation automatique d'objets `Transformable` (Value Objects, Records, DTOs) depuis des sources variées (tableaux, JSON, colonnes de base de données) ainsi que des directives CLI pour automatiser les workflows Git (push et génération de diff pour revue IA).
 
 ---
 
@@ -39,7 +41,8 @@ composer require andydefer/laravel-utils
 - PHP 8.1 ou supérieur
 - Laravel 10.x, 11.x, 12.x, 13.x, 14.x ou 15.x
 - `andydefer/domain-structures` ^1.0
-- `pngquant` et `jpegoptim` pour la compression CLI (optionnel)
+- Git (pour les directives CLI)
+- VS Code (optionnel, pour l'ouverture automatique des fichiers)
 
 ---
 
@@ -139,6 +142,73 @@ Directive CLI pour pousser du code vers des dépôts Git distants configurés av
 
 ---
 
+### GitDiffDirective
+
+Directive CLI pour générer un diff Git formaté pour la revue de code par IA.
+
+```bash
+# Génération simple (interactif)
+./bin/afya ugd
+
+# Génération non-interactive avec chemins et extensions
+./bin/afya ugd [src, tests] [.php, .js] --no-interactive
+
+# Utilisation des recettes d'extensions
+./bin/afya ugd --frontend                # Frontend uniquement
+./bin/afya ugd --backend                 # Backend uniquement
+./bin/afya ugd --recipes                 # Sélection interactive des recettes
+
+# Simulation (dry-run)
+./bin/afya ugd [src] --dry-run
+
+# Génération avec résumé de travail
+./bin/afya ugd [src] --with-summary
+```
+
+**Paramètres :**
+
+| Paramètre | Description |
+|-----------|-------------|
+| `{paths*}` | Chemins à inclure (ex: `[src, tests]`) |
+| `{extensions*}` | Extensions à filtrer (ex: `[.php, .js]`) |
+| `--frontend` | Utiliser les extensions frontend de la config |
+| `--backend` | Utiliser les extensions backend de la config |
+| `--recipes` | Sélectionner les recettes d'extensions interactivement |
+| `--with-summary` | Créer un résumé de travail après le diff |
+| `--no-interactive` | Désactiver le mode interactif |
+| `--dry-run` | Simuler l'opération sans écrire de fichier |
+
+**Recettes d'extensions par défaut :**
+
+| Recette | Extensions |
+|---------|------------|
+| `frontend` | js, ts, tsx, jsx, vue, css, scss, sass, less, html, xml |
+| `backend` | php, py, rb, go, rs, java, c, cpp, h, hpp |
+
+**Exemple de fichier généré :**
+
+Le diff est généré dans `docs/diffs/YYYY-MM-DDTHH-MM-SS-diff.md` avec le format suivant :
+
+```markdown
+Tu es un expert en revue de code et en conventions de commits (Conventional Commits).
+
+À partir du diff Git ci-dessous, fais les choses suivantes :
+
+1. Propose un nom de fichier pour le work summary
+2. Propose un nom de commit clair et concis en anglais avec le format <type>(<scope>): <description>
+3. Rédige un résumé du travail effectué en quelques phrases (en français)
+4. Donne une liste d'exemples concrets de changements
+
+Voici le diff :
+
+```diff
+diff --git a/src/Directives/GitDiffDirective.php b/src/Directives/GitDiffDirective.php
+...
+```
+```
+
+---
+
 ## Configuration
 
 ### Configuration des dépôts Git
@@ -149,6 +219,23 @@ return [
     'repositories' => [
         'github' => 'git@github.com:andydefer/afya-medical.git',
         'o2switch' => 'ssh://user@domain.com/home/user/git/repo.git',
+    ],
+];
+```
+
+### Configuration des extensions
+
+```php
+// config/utils.php
+return [
+    // Extensions par défaut pour le diff
+    'default_extensions' => ['php', 'js', 'ts', 'css', 'html', 'json', 'yaml', 'md'],
+    
+    // Recettes d'extensions
+    'extension_recipes' => [
+        'frontend' => ['js', 'ts', 'tsx', 'jsx', 'vue', 'css', 'scss', 'sass', 'less', 'html', 'xml'],
+        'backend' => ['php', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp'],
+        'fullstack' => ['php', 'js', 'ts', 'tsx', 'jsx', 'vue', 'css', 'scss', 'html'],
     ],
 ];
 ```
@@ -166,6 +253,7 @@ php artisan vendor:publish --tag=utils-config
 - [TransformableProxy - Référence Technique](docs/TransformableProxy.md)
 - [AttributeProxy - Référence Technique](docs/AttributeProxy.md)
 - [GitPushDirective - Référence Technique](docs/GitPushDirective.md)
+- [GitDiffDirective - Référence Technique](docs/GitDiffDirective.md)
 
 ---
 
@@ -205,4 +293,5 @@ MIT © [Andy Defer](https://github.com/andydefer)
 - `illuminate/database` - Pour les attributs Eloquent
 - `symfony/process` - Pour l'exécution des commandes Git
 - `andydefer/laravel-directive` - Pour l'infrastructure des directives CLI
+- `andydefer/console-writer` - Pour l'interface utilisateur en CLI
 ---

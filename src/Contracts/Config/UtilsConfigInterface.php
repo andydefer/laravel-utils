@@ -12,4 +12,18 @@ interface UtilsConfigInterface
      * @return array<string, string> Repository alias => URL
      */
     public function getRepositories(): array;
+
+    /**
+     * Get the list of default file extensions for git diff.
+     *
+     * @return array<string> List of default extensions
+     */
+    public function getDefaultExtensions(): array;
+
+    /**
+     * Get the list of configured extension recipes.
+     *
+     * @return array<string, array<string>> Recipe name => list of extensions
+     */
+    public function getExtensionRecipes(): array;
 }
