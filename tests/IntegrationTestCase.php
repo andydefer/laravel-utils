@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace AndyDefer\LaravelUtils\Tests;
 
+use AndyDefer\Directive\DirectiveServiceProvider;
 use AndyDefer\LaravelCluster\Providers\ClusterServiceProvider;
+use AndyDefer\LaravelUtils\Providers\UtilsServiceProvider;
 use AndyDefer\Repository\RepositoryServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
@@ -15,6 +17,8 @@ abstract class IntegrationTestCase extends Orchestra
         return [
             ClusterServiceProvider::class,
             RepositoryServiceProvider::class,
+            DirectiveServiceProvider::class,
+            UtilsServiceProvider::class,
         ];
     }
 
