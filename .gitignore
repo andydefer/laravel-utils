@@ -45,6 +45,7 @@ pint.md
 _ide_helper.php
 _ide_helper_models.php
 .phpintel/
+.directive/
 
 # OS generated files
 Thumbs.db
