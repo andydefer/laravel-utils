@@ -33,7 +33,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "AndyDefer\\LaravelUtils\\Providers\\LaravelUtilsServiceProvider"
+                "AndyDefer\\LaravelUtils\\Providers\\UtilsServiceProvider"
             ]
         }
     },
