@@ -57,12 +57,12 @@ logs/
 
 # Testing
 /testbench
+/bin/
 /.testbench
 *.sqlite
 *.sqlite3
 /storage
 /bootstrap/cache/
-/config/*.php
 /database/*.sqlite
 /database/*.sqlite3
 /STRUCTURE.md
