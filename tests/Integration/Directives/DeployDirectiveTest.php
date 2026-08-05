@@ -115,6 +115,8 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
         $this->assertStringContainsString('git fetch origin main', $response->output);
         $this->assertStringContainsString('git reset --hard origin/main', $response->output);
+        $this->assertStringContainsString('composer install --dry-run', $response->output);
+        $this->assertStringContainsString('composer install', $response->output);
         $this->assertStringContainsString('test -f', $response->output);
         $this->assertStringContainsString('cp', $response->output);
         $this->assertStringContainsString('.env.example', $response->output);
@@ -225,6 +227,8 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('master', $response->output);
         $this->assertStringContainsString('git fetch origin master', $response->output);
         $this->assertStringContainsString('git reset --hard origin/master', $response->output);
+        $this->assertStringContainsString('composer install --dry-run', $response->output);
+        $this->assertStringContainsString('composer install', $response->output);
         $this->assertStringContainsString('test -f', $response->output);
         $this->assertStringContainsString('.env.example', $response->output);
         $this->assertStringContainsString('php artisan key:generate', $response->output);
@@ -262,6 +266,8 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $output);
         $this->assertStringContainsString('git fetch origin main', $output);
         $this->assertStringContainsString('git reset --hard origin/main', $output);
+        $this->assertStringContainsString('composer install --dry-run', $output);
+        $this->assertStringContainsString('composer install', $output);
         $this->assertStringContainsString('test -f', $output);
         $this->assertStringContainsString('.env.example', $output);
         $this->assertStringContainsString('php artisan key:generate', $output);
@@ -289,7 +295,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
     }
 
     // ============================================================
-    // NOUVEAUX TESTS POUR SetupEnvironmentOperation
+    // TESTS POUR SetupEnvironmentOperation
     // ============================================================
 
     public function test_deploy_includes_environment_setup_in_dry_run(): void
@@ -323,7 +329,41 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('php artisan key:generate', $response->output);
     }
 
-    public function test_deploy_summary_shows_correct_commands_count_with_environment(): void
+    // ============================================================
+    // NOUVEAUX TESTS POUR SetupDependenciesOperation
+    // ============================================================
+
+    public function test_deploy_includes_dependencies_setup_in_dry_run(): void
+    {
+        // Arrange
+        $command = 'o2switch:deploy --dry-run';
+
+        // Act
+        $response = $this->service->run($command);
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('composer install --dry-run', $response->output);
+        $this->assertStringContainsString('composer install', $response->output);
+    }
+
+    public function test_deploy_shows_dependencies_setup_messages(): void
+    {
+        // Arrange
+        $command = 'o2switch:deploy --dry-run';
+
+        // Act
+        $response = $this->service->run($command);
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
+        $this->assertStringContainsString('composer install --dry-run', $response->output);
+        $this->assertStringContainsString('rm -rf vendor composer.lock (if dry-run fails)', $response->output);
+        $this->assertStringContainsString('composer install', $response->output);
+    }
+
+    public function test_deploy_summary_shows_correct_commands_count_with_all_operations(): void
     {
         // Arrange
         $command = 'o2switch:deploy --dry-run';
@@ -336,6 +376,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
         $output = strip_ansi($response->output);
 
-        $this->assertMatchesRegularExpression('/Commands\s*:\s*5/', $output);
+        // Vérifier que le nombre de commandes est 7 (git fetch, git reset, composer dry-run, composer install, test -f, cp, key:generate)
+        $this->assertMatchesRegularExpression('/Commands\s*:\s*7/', $output);
     }
 }

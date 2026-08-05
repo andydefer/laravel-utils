@@ -11,6 +11,7 @@ use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
 use AndyDefer\LaravelUtils\Contracts\Config\UtilsConfigInterface;
 use AndyDefer\LaravelUtils\Operations\CheckServerConnectivityOperation;
 use AndyDefer\LaravelUtils\Operations\DeployCodeOperation;
+use AndyDefer\LaravelUtils\Operations\SetupDependenciesOperation;
 use AndyDefer\LaravelUtils\Operations\SetupEnvironmentOperation;
 use AndyDefer\LaravelUtils\Records\DeploymentResultRecord;
 use AndyDefer\LaravelUtils\Services\SshService;
@@ -81,6 +82,7 @@ final class DeployDirective extends AbstractDirective
 
         DeploymentUI::displayConfiguration($this->console, $this->deploymentConfig);
 
+        // Operation 1 & 2: Vérification de la connectivité
         $reachable = CheckServerConnectivityOperation::handle(
             $this->sshService,
             $this->deploymentConfig['ssh_key'],
@@ -92,6 +94,7 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
+        // Demander confirmation
         if (! $force && ! $dryRun) {
             $confirmed = DeploymentUI::displayConfirmation($this->console);
             if (! $confirmed) {
@@ -101,6 +104,7 @@ final class DeployDirective extends AbstractDirective
 
         $this->contextSet('start_time', microtime(true));
 
+        // Operation 3 & 4: Déploiement du code
         $deployResult = DeployCodeOperation::handle(
             $this->sshService,
             $this->deploymentConfig['git_branch'],
@@ -115,6 +119,22 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
+        // Operation 5: Installation des dépendances
+        $dependenciesResult = SetupDependenciesOperation::handle(
+            $this->sshService,
+            $this->deploymentConfig['remote_path'],
+            $dryRun,
+            $this->console
+        );
+
+        if (! $dependenciesResult->success) {
+            $duration = microtime(true) - $this->contextGet('start_time');
+            DeploymentUI::displayResult($this->console, $dependenciesResult, $duration);
+
+            return ExitCode::FAILURE;
+        }
+
+        // Operation 6: Configuration de l'environnement
         $envResult = SetupEnvironmentOperation::handle(
             $this->sshService,
             $this->deploymentConfig['remote_path'],
@@ -130,8 +150,10 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // ✅ Correction : fusionner les collections StringTypedCollection
-        $mergedCommands = $deployResult->commands_executed->merge($envResult->commands_executed);
+        // Fusionner toutes les commandes exécutées
+        $mergedCommands = $deployResult->commands_executed
+            ->merge($dependenciesResult->commands_executed)
+            ->merge($envResult->commands_executed);
 
         $finalResult = DeploymentResultRecord::from([
             'success' => true,
