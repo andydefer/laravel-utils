@@ -39,7 +39,7 @@ final class SetupStorageOperation
 
         if (! str_contains($storageExists->output, 'EXISTS')) {
             if ($console) {
-                $console->alertWarning('⚠️  storage directory missing, creating...');
+                $console->alertWarning(' storage directory missing, creating...');
             }
 
             $createStorageResult = $sshService->execute("mkdir -p {$remotePath}/storage", false);
@@ -80,7 +80,7 @@ final class SetupStorageOperation
 
         if (! str_contains($publicLinkExists->output, 'EXISTS')) {
             if ($console) {
-                $console->alertWarning('⚠️  public/storage symbolic link is missing');
+                $console->alertWarning(' public/storage symbolic link is missing');
             }
             $linksMissing = true;
         } else {

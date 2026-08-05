@@ -14,6 +14,7 @@ use AndyDefer\LaravelUtils\Operations\DeployCodeOperation;
 use AndyDefer\LaravelUtils\Operations\SetupDependenciesOperation;
 use AndyDefer\LaravelUtils\Operations\SetupEnvironmentOperation;
 use AndyDefer\LaravelUtils\Operations\SetupFrontendAssetsOperation;
+use AndyDefer\LaravelUtils\Operations\SetupLaravelOptimizationOperation;
 use AndyDefer\LaravelUtils\Operations\SetupStorageOperation;
 use AndyDefer\LaravelUtils\Records\DeploymentResultRecord;
 use AndyDefer\LaravelUtils\Services\SshService;
@@ -174,10 +175,25 @@ final class DeployDirective extends AbstractDirective
             $this->console
         );
 
+        if (! $storageResult->success) {
+            $duration = microtime(true) - $this->contextGet('start_time');
+            DeploymentUI::displayResult($this->console, $storageResult, $duration);
+
+            return ExitCode::FAILURE;
+        }
+
+        // Operation 9: Optimisation Laravel et migrations
+        $optimizationResult = SetupLaravelOptimizationOperation::handle(
+            $this->sshService,
+            $this->deploymentConfig['remote_path'],
+            $dryRun,
+            $this->console
+        );
+
         $duration = microtime(true) - $this->contextGet('start_time');
 
-        if (! $storageResult->success) {
-            DeploymentUI::displayResult($this->console, $storageResult, $duration);
+        if (! $optimizationResult->success) {
+            DeploymentUI::displayResult($this->console, $optimizationResult, $duration);
 
             return ExitCode::FAILURE;
         }
@@ -187,7 +203,8 @@ final class DeployDirective extends AbstractDirective
             ->merge($dependenciesResult->commands_executed)
             ->merge($frontendResult->commands_executed)
             ->merge($envResult->commands_executed)
-            ->merge($storageResult->commands_executed);
+            ->merge($storageResult->commands_executed)
+            ->merge($optimizationResult->commands_executed);
 
         $finalResult = DeploymentResultRecord::from([
             'success' => true,
