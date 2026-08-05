@@ -13,6 +13,7 @@ use AndyDefer\LaravelUtils\Operations\CheckServerConnectivityOperation;
 use AndyDefer\LaravelUtils\Operations\DeployCodeOperation;
 use AndyDefer\LaravelUtils\Operations\SetupDependenciesOperation;
 use AndyDefer\LaravelUtils\Operations\SetupEnvironmentOperation;
+use AndyDefer\LaravelUtils\Operations\SetupFrontendAssetsOperation;
 use AndyDefer\LaravelUtils\Records\DeploymentResultRecord;
 use AndyDefer\LaravelUtils\Services\SshService;
 use AndyDefer\LaravelUtils\UI\DeploymentUI;
@@ -134,7 +135,22 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // Operation 6: Configuration de l'environnement
+        // Operation 6: Assets frontend
+        $frontendResult = SetupFrontendAssetsOperation::handle(
+            $this->sshService,
+            $this->deploymentConfig['remote_path'],
+            $dryRun,
+            $this->console
+        );
+
+        if (! $frontendResult->success) {
+            $duration = microtime(true) - $this->contextGet('start_time');
+            DeploymentUI::displayResult($this->console, $frontendResult, $duration);
+
+            return ExitCode::FAILURE;
+        }
+
+        // Operation 7: Configuration de l'environnement
         $envResult = SetupEnvironmentOperation::handle(
             $this->sshService,
             $this->deploymentConfig['remote_path'],
@@ -153,6 +169,7 @@ final class DeployDirective extends AbstractDirective
         // Fusionner toutes les commandes exécutées
         $mergedCommands = $deployResult->commands_executed
             ->merge($dependenciesResult->commands_executed)
+            ->merge($frontendResult->commands_executed)
             ->merge($envResult->commands_executed);
 
         $finalResult = DeploymentResultRecord::from([

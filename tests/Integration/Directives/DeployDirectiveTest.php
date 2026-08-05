@@ -117,6 +117,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('git reset --hard origin/main', $response->output);
         $this->assertStringContainsString('composer install --dry-run', $response->output);
         $this->assertStringContainsString('composer install', $response->output);
+        $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $response->output);
+        $this->assertStringContainsString('npm install (if manifest missing or outdated)', $response->output);
+        $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $response->output);
         $this->assertStringContainsString('test -f', $response->output);
         $this->assertStringContainsString('cp', $response->output);
         $this->assertStringContainsString('.env.example', $response->output);
@@ -229,6 +232,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('git reset --hard origin/master', $response->output);
         $this->assertStringContainsString('composer install --dry-run', $response->output);
         $this->assertStringContainsString('composer install', $response->output);
+        $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $response->output);
+        $this->assertStringContainsString('npm install (if manifest missing or outdated)', $response->output);
+        $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $response->output);
         $this->assertStringContainsString('test -f', $response->output);
         $this->assertStringContainsString('.env.example', $response->output);
         $this->assertStringContainsString('php artisan key:generate', $response->output);
@@ -268,6 +274,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('git reset --hard origin/main', $output);
         $this->assertStringContainsString('composer install --dry-run', $output);
         $this->assertStringContainsString('composer install', $output);
+        $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $output);
+        $this->assertStringContainsString('npm install (if manifest missing or outdated)', $output);
+        $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $output);
         $this->assertStringContainsString('test -f', $output);
         $this->assertStringContainsString('.env.example', $output);
         $this->assertStringContainsString('php artisan key:generate', $output);
@@ -330,7 +339,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
     }
 
     // ============================================================
-    // NOUVEAUX TESTS POUR SetupDependenciesOperation
+    // TESTS POUR SetupDependenciesOperation
     // ============================================================
 
     public function test_deploy_includes_dependencies_setup_in_dry_run(): void
@@ -345,6 +354,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('composer install --dry-run', $response->output);
         $this->assertStringContainsString('composer install', $response->output);
+        $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $response->output);
     }
 
     public function test_deploy_shows_dependencies_setup_messages(): void
@@ -361,9 +371,57 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('composer install --dry-run', $response->output);
         $this->assertStringContainsString('rm -rf vendor composer.lock (if needed)', $response->output);
         $this->assertStringContainsString('composer install', $response->output);
+        $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $response->output);
     }
 
-    public function test_deploy_summary_shows_correct_commands_count_with_all_operations(): void
+    // ============================================================
+    // NOUVEAUX TESTS POUR SetupFrontendAssetsOperation
+    // ============================================================
+
+    public function test_deploy_includes_frontend_assets_setup_in_dry_run(): void
+    {
+        // Arrange
+        $command = 'o2switch:deploy --dry-run';
+
+        // Act
+        $response = $this->service->run($command);
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('npm install (if manifest missing or outdated)', $response->output);
+        $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $response->output);
+    }
+
+    public function test_deploy_shows_frontend_assets_setup_messages(): void
+    {
+        // Arrange
+        $command = 'o2switch:deploy --dry-run';
+
+        // Act
+        $response = $this->service->run($command);
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
+        $this->assertStringContainsString('test -f public/build/manifest.json', $response->output);
+        $this->assertStringContainsString('npm install (if manifest missing or outdated)', $response->output);
+        $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $response->output);
+    }
+
+    public function test_deploy_dry_run_shows_frontend_check_message(): void
+    {
+        // Arrange
+        $command = 'o2switch:deploy --dry-run';
+
+        // Act
+        $response = $this->service->run($command);
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('test -f public/build/manifest.json', $response->output);
+    }
+
+    public function test_deploy_summary_shows_correct_commands_count_with_all_operations_including_frontend(): void
     {
         // Arrange
         $command = 'o2switch:deploy --dry-run';
@@ -376,20 +434,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
         $output = strip_ansi($response->output);
 
-        // Vérifier que le nombre de commandes est 7 (git fetch, git reset, composer dry-run, composer install, test -f, cp, key:generate)
-        $this->assertMatchesRegularExpression('/Commands\s*:\s*7/', $output);
-    }
-
-    public function test_deploy_dry_run_shows_cleanup_message(): void
-    {
-        // Arrange
-        $command = 'o2switch:deploy --dry-run';
-
-        // Act
-        $response = $this->service->run($command);
-
-        // Assert
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('rm -rf vendor composer.lock (if needed)', $response->output);
+        // Vérifier que le nombre de commandes est 10 (git fetch, git reset, composer dry-run, composer install, touch autoload, npm install, npm run build, test -f, cp, key:generate)
+        $this->assertMatchesRegularExpression('/Commands\s*:\s*10/', $output);
     }
 }

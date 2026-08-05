@@ -20,13 +20,14 @@ final class SetupDependenciesOperation
                 $console->line('   composer install --dry-run');
                 $console->line('   rm -rf vendor composer.lock (if needed)');
                 $console->line('   composer install');
+                $console->line('   touch vendor/autoload.php (if autoload outdated)');
                 $console->line();
             }
 
             return DeploymentResultRecord::from([
                 'success' => true,
                 'message' => 'Dependencies setup dry run completed',
-                'commands_executed' => ['composer install --dry-run', 'composer install'],
+                'commands_executed' => ['composer install --dry-run', 'composer install', 'touch vendor/autoload.php'],
             ]);
         }
 
@@ -41,6 +42,7 @@ final class SetupDependenciesOperation
         $lockExists = $sshService->execute("test -f {$remotePath}/composer.lock && echo 'EXISTS'", false);
         $commandsExecuted[] = "test -f {$remotePath}/composer.lock";
 
+        $needsInstall = false;
         $needsCleanup = false;
 
         // Si vendor ou composer.lock manque, il faut nettoyer et réinstaller
@@ -49,29 +51,70 @@ final class SetupDependenciesOperation
                 $console->alertWarning('⚠️  vendor or composer.lock missing, will reinstall dependencies');
             }
             $needsCleanup = true;
+            $needsInstall = true;
         } else {
-            // Étape 2: Vérifier si composer install --dry-run passe
+            // Étape 2: Vérifier si vendor/autoload.php est plus récent que composer.lock
             if ($console) {
-                $console->info('📦 Checking composer dependencies...');
+                $console->info('📦 Checking autoload freshness...');
             }
 
-            $dryRunResult = $sshService->execute("cd {$remotePath} && composer install --dry-run", false);
-            $commandsExecuted[] = 'composer install --dry-run';
+            $autoloadExists = $sshService->execute("test -f {$remotePath}/vendor/autoload.php && echo 'EXISTS'", false);
+            $commandsExecuted[] = "test -f {$remotePath}/vendor/autoload.php";
 
-            // Si le dry-run échoue, on nettoie
-            if (! $dryRunResult->success || str_contains($dryRunResult->error, 'not present in the lock file')) {
-                if ($console) {
-                    $console->alertWarning('⚠️  Composer dry-run failed, cleaning vendor and lock file...');
+            if (str_contains($autoloadExists->output, 'EXISTS')) {
+                // Comparer les dates de modification
+                $autoloadMtime = $sshService->execute("stat -c %Y {$remotePath}/vendor/autoload.php 2>/dev/null || echo '0'", false);
+                $commandsExecuted[] = "stat -c %Y {$remotePath}/vendor/autoload.php";
+
+                $lockMtime = $sshService->execute("stat -c %Y {$remotePath}/composer.lock 2>/dev/null || echo '0'", false);
+                $commandsExecuted[] = "stat -c %Y {$remotePath}/composer.lock";
+
+                $autoloadTime = (int) trim($autoloadMtime->output);
+                $lockTime = (int) trim($lockMtime->output);
+
+                // Si autoload.php est plus ancien que composer.lock, il faut réinstaller
+                if ($autoloadTime < $lockTime) {
+                    if ($console) {
+                        $console->alertWarning('⚠️  vendor/autoload.php is outdated (older than composer.lock), reinstalling...');
+                    }
+                    $needsInstall = true;
+                } else {
+                    if ($console) {
+                        $console->success('✅ vendor/autoload.php is up to date');
+                    }
                 }
-                $needsCleanup = true;
             } else {
                 if ($console) {
-                    $console->success('✅ Composer dry-run passed');
+                    $console->alertWarning('⚠️  vendor/autoload.php missing, reinstalling...');
+                }
+                $needsInstall = true;
+            }
+
+            // Étape 3: Vérifier si composer install --dry-run passe
+            if (! $needsInstall) {
+                if ($console) {
+                    $console->info('📦 Checking composer dependencies...');
+                }
+
+                $dryRunResult = $sshService->execute("cd {$remotePath} && composer install --dry-run", false);
+                $commandsExecuted[] = 'composer install --dry-run';
+
+                // Si le dry-run échoue, on nettoie et réinstalle
+                if (! $dryRunResult->success || str_contains($dryRunResult->error, 'not present in the lock file')) {
+                    if ($console) {
+                        $console->alertWarning('⚠️  Composer dry-run failed, cleaning and reinstalling...');
+                    }
+                    $needsCleanup = true;
+                    $needsInstall = true;
+                } else {
+                    if ($console) {
+                        $console->success('✅ Composer dry-run passed');
+                    }
                 }
             }
         }
 
-        // Étape 3: Nettoyer si nécessaire
+        // Étape 4: Nettoyer si nécessaire
         if ($needsCleanup) {
             if ($console) {
                 $console->info('🧹 Cleaning vendor and composer.lock...');
@@ -94,25 +137,49 @@ final class SetupDependenciesOperation
             }
         }
 
-        // Étape 4: Installer les dépendances
-        if ($console) {
-            $console->info('📦 Installing composer dependencies...');
-        }
+        // Étape 5: Installer les dépendances si nécessaire
+        if ($needsInstall) {
+            if ($console) {
+                $console->info('📦 Installing composer dependencies...');
+            }
 
-        $installResult = $sshService->execute("cd {$remotePath} && composer install --no-interaction --prefer-dist --optimize-autoloader", false);
-        $commandsExecuted[] = 'composer install --no-interaction --prefer-dist --optimize-autoloader';
+            $installResult = $sshService->execute("cd {$remotePath} && composer install --no-interaction --prefer-dist --optimize-autoloader", false);
+            $commandsExecuted[] = 'composer install --no-interaction --prefer-dist --optimize-autoloader';
 
-        if (! $installResult->success) {
-            return DeploymentResultRecord::from([
-                'success' => false,
-                'message' => 'Composer install failed',
-                'error' => $installResult->error,
-                'commands_executed' => $commandsExecuted,
-            ]);
-        }
+            if (! $installResult->success) {
+                return DeploymentResultRecord::from([
+                    'success' => false,
+                    'message' => 'Composer install failed',
+                    'error' => $installResult->error,
+                    'commands_executed' => $commandsExecuted,
+                ]);
+            }
 
-        if ($console) {
-            $console->success('✅ Composer dependencies installed');
+            if ($console) {
+                $console->success('✅ Composer dependencies installed');
+            }
+
+            // Étape 6: Toucher vendor/autoload.php pour mettre à jour sa date
+            if ($console) {
+                $console->info('🔄 Updating autoload.php timestamp...');
+            }
+
+            $touchResult = $sshService->execute("cd {$remotePath} && touch vendor/autoload.php", false);
+            $commandsExecuted[] = 'touch vendor/autoload.php';
+
+            if (! $touchResult->success) {
+                if ($console) {
+                    $console->alertWarning('⚠️  Could not touch vendor/autoload.php, but installation completed');
+                }
+            } else {
+                if ($console) {
+                    $console->success('✅ vendor/autoload.php timestamp updated');
+                }
+            }
+        } else {
+            if ($console) {
+                $console->success('✅ No installation needed, dependencies are up to date');
+            }
         }
 
         return DeploymentResultRecord::from([
