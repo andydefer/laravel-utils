@@ -90,7 +90,17 @@ $coordinates = TransformableProxy::make(CoordinatesVO::class, null, nullable: tr
 
 ### AttributeProxy
 
-Proxy pour créer des attributs Eloquent qui hydratent automatiquement des objets `Transformable` :
+Proxy pour créer des attributs Eloquent qui hydratent automatiquement des objets `Transformable` depuis les colonnes de base de données.
+
+#### Méthodes disponibles
+
+| Méthode | Description |
+|---------|-------------|
+| `required()` | Attribut requis (non-nullable) |
+| `nullable()` | Attribut nullable |
+| `make()` | **⚠️ Dépréciée** - Utiliser `required()` ou `nullable()` |
+
+#### Exemple d'utilisation
 
 ```php
 use AndyDefer\LaravelUtils\Proxies\AttributeProxy;
@@ -100,30 +110,63 @@ use App\Records\SettingsRecord;
 
 class User extends Model
 {
-    // Attribut simple
+    // Attribut nullable (slug)
     protected function slug(): Attribute
     {
-        return AttributeProxy::make(SlugVO::class);
+        return AttributeProxy::nullable(SlugVO::class, column: 'slug');
     }
 
-    // Attribut nullable
+    // Attribut required (coordinates)
     protected function coordinates(): Attribute
     {
-        return AttributeProxy::nullable(CoordinatesVO::class);
+        return AttributeProxy::required(CoordinatesVO::class, column: 'coordinates');
     }
 
-    // Attribut avec colonne différente
+    // Attribut nullable avec colonne différente
     protected function settings(): Attribute
     {
-        return AttributeProxy::make(SettingsRecord::class, column: 'metadata');
+        return AttributeProxy::nullable(SettingsRecord::class, column: 'metadata');
+    }
+
+    // Attribut avec transformation personnalisée
+    protected function customSlug(): Attribute
+    {
+        return AttributeProxy::nullable(
+            SlugVO::class,
+            column: 'slug',
+            get: function ($value, $attributes) {
+                return strtolower(trim($value));
+            },
+            set: function ($value) {
+                return ['slug' => strtolower(trim($value))];
+            }
+        );
     }
 }
 
 // Utilisation
 $user = User::find(1);
-echo $user->slug->value;        // 'john-doe'
-echo $user->coordinates->lat;   // 48.8566
-echo $user->settings->theme;    // 'dark'
+echo $user->slug->getValue();           // 'john-doe'
+echo $user->coordinates->getLatitude()->getValue(); // 48.8566
+echo $user->settings->theme;            // 'dark'
+```
+
+#### Gestion automatique du Set
+
+Lorsque vous spécifiez une colonne (`column`), `AttributeProxy` gère automatiquement la persistance :
+
+```php
+class Product extends Model
+{
+    protected function slug(): Attribute
+    {
+        // Le set est automatiquement géré
+        return AttributeProxy::nullable(SlugVO::class, column: 'slug');
+    }
+}
+
+// La valeur est automatiquement normalisée avant stockage
+$product->slug = 'Mon Article';  // Stocké comme 'mon-article'
 ```
 
 ---
@@ -290,7 +333,7 @@ Cette commande crée le fichier `config/utils.php` dans votre application.
 // config/utils.php
 return [
     'repositories' => [
-        'github' => 'git@github.com:andydefer/afya-medical.git',
+        'github' => 'git@github.com:andydefer/laravel-utils.git',
         'o2switch' => 'ssh://user@domain.com/home/user/git/repo.git',
     ],
 ];
@@ -313,15 +356,18 @@ return [
 ];
 ```
 
-### Configuration des tags Git
+### Configuration du déploiement
 
 ```php
 // config/utils.php
 return [
     // ... autres configurations ...
     
-    // Les tags utilisent les paramètres Git par défaut
-    // Aucune configuration spécifique n'est requise
+    'deployment' => [
+        'ssh_key' => env('DEPLOY_SSH_KEY', 'o2switch'),
+        'remote_path' => env('DEPLOY_REMOTE_PATH', '~/sites/laravel-utils.com'),
+        'git_branch' => env('DEPLOY_GIT_BRANCH', 'master'),
+    ],
 ];
 ```
 
@@ -374,4 +420,3 @@ MIT © [Andy Defer](https://github.com/andydefer)
 - `symfony/process` - Pour l'exécution des commandes Git
 - `andydefer/laravel-directive` - Pour l'infrastructure des directives CLI
 - `andydefer/console-writer` - Pour l'interface utilisateur en CLI
-```

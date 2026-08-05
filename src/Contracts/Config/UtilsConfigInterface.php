@@ -26,4 +26,11 @@ interface UtilsConfigInterface
      * @return array<string, array<string>> Recipe name => list of extensions
      */
     public function getExtensionRecipes(): array;
+
+    /**
+     * Get the deployment configuration.
+     *
+     * @return array{ssh_key: string, remote_path: string, git_branch: string}
+     */
+    public function getDeploymentConfig(): array;
 }

@@ -1,72 +1,37 @@
 <?php
 
-declare(strict_types=1);
-
 return [
     /*
     |--------------------------------------------------------------------------
     | Git Repositories
     |--------------------------------------------------------------------------
     |
-    | Define your git remote repositories here. The key is the alias used
-    | in the command line, and the value is the remote URL.
-    |
-    | Example:
-    | 'github' => 'git@github.com:andydefer/laravel-utils.git'
+    | Configure your Git repositories for push directives.
     |
     */
     'repositories' => [
-        'github' => env('GIT_REPO_GITHUB', 'git@github.com:andydefer/laravel-utils.git'),
+        'github' => 'git@github.com:andydefer/laravel-utils.git',
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Default Extensions for Git Diff
+    | File Extensions
     |--------------------------------------------------------------------------
     |
-    | Define the default file extensions to include when generating a git diff.
-    | These will be pre-selected in the interactive mode.
-    |
-    | Example:
-    | 'default_extensions' => ['php', 'js', 'ts', 'vue', 'css', 'html']
+    | Default extensions for git diff and extension recipes.
     |
     */
     'default_extensions' => [
         'php',
         'js',
         'ts',
-        'tsx',
-        'jsx',
-        'vue',
         'css',
-        'scss',
         'html',
-        'xml',
         'json',
         'yaml',
-        'yml',
         'md',
-        'sh',
-        'bash',
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Extension Recipes
-    |--------------------------------------------------------------------------
-    |
-    | Define named groups of extensions for quick selection.
-    | Each recipe is a key-value pair where the key is the recipe name
-    | and the value is an array of extensions.
-    |
-    | Example:
-    | 'extension_recipes' => [
-    |     'frontend' => ['js', 'ts', 'tsx', 'jsx', 'vue', 'css', 'scss', 'html'],
-    |     'backend' => ['php', 'py', 'rb', 'go', 'rs', 'java'],
-    |     'fullstack' => ['php', 'js', 'ts', 'tsx', 'jsx', 'vue', 'css', 'scss', 'html'],
-    | ]
-    |
-    */
     'extension_recipes' => [
         'frontend' => [
             'js',
@@ -93,5 +58,19 @@ return [
             'h',
             'hpp',
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Deployment Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure your deployment settings for O2Switch.
+    |
+    */
+    'deployment' => [
+        'ssh_key' => env('DEPLOY_SSH_KEY', 'o2switch'),
+        'remote_path' => env('DEPLOY_REMOTE_PATH', '~/sites/laravel-utils.com'),
+        'git_branch' => env('DEPLOY_GIT_BRANCH', 'master'),
     ],
 ];

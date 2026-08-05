@@ -72,6 +72,12 @@ final class UtilsConfig implements UtilsConfigInterface
         ],
     ];
 
+    private const DEFAULT_DEPLOYMENT = [
+        'ssh_key' => 'o2switch',
+        'remote_path' => '~/sites/laravel-utils.com',
+        'git_branch' => 'master',
+    ];
+
     public function __construct(
         private readonly ConfigRepository $config,
     ) {}
@@ -95,5 +101,12 @@ final class UtilsConfig implements UtilsConfigInterface
         $recipes = $this->config->get('utils.extension_recipes', self::DEFAULT_RECIPES);
 
         return is_array($recipes) ? $recipes : self::DEFAULT_RECIPES;
+    }
+
+    public function getDeploymentConfig(): array
+    {
+        $deployment = $this->config->get('utils.deployment', self::DEFAULT_DEPLOYMENT);
+
+        return is_array($deployment) ? array_merge(self::DEFAULT_DEPLOYMENT, $deployment) : self::DEFAULT_DEPLOYMENT;
     }
 }
