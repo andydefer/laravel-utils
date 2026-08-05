@@ -119,7 +119,7 @@ final class UtilsConfig implements UtilsConfigInterface
     {
         $source = $this->config->get('utils.publish_source', self::DEFAULT_PUBLISH_SOURCE);
 
-        return Paths::packageRoot().'/'.$source;
+        return str_replace('laravel-directive', 'laravel-utils', Paths::packageRoot().'/'.$source);
     }
 
     public function getPublishTargetPath(): string
