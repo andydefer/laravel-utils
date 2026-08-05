@@ -359,7 +359,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
         $this->assertStringContainsString('composer install --dry-run', $response->output);
-        $this->assertStringContainsString('rm -rf vendor composer.lock (if dry-run fails)', $response->output);
+        $this->assertStringContainsString('rm -rf vendor composer.lock (if needed)', $response->output);
         $this->assertStringContainsString('composer install', $response->output);
     }
 
@@ -378,5 +378,18 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
         // Vérifier que le nombre de commandes est 7 (git fetch, git reset, composer dry-run, composer install, test -f, cp, key:generate)
         $this->assertMatchesRegularExpression('/Commands\s*:\s*7/', $output);
+    }
+
+    public function test_deploy_dry_run_shows_cleanup_message(): void
+    {
+        // Arrange
+        $command = 'o2switch:deploy --dry-run';
+
+        // Act
+        $response = $this->service->run($command);
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('rm -rf vendor composer.lock (if needed)', $response->output);
     }
 }
