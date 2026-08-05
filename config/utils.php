@@ -73,4 +73,15 @@ return [
         'remote_path' => env('DEPLOY_REMOTE_PATH', '~/sites/laravel-utils.com'),
         'git_branch' => env('DEPLOY_GIT_BRANCH', 'master'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Publish Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure source and target paths for publishing directives.
+    |
+    */
+    'publish_source' => 'app/Directives',
+    'publish_target' => 'app/Directives',
 ];

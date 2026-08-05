@@ -8,8 +8,8 @@ use AndyDefer\Directive\Enums\ExitCode;
 use AndyDefer\Directive\Services\DirectiveTestingService;
 use AndyDefer\LaravelUtils\Configs\UtilsConfig;
 use AndyDefer\LaravelUtils\Contracts\Config\UtilsConfigInterface;
-use AndyDefer\LaravelUtils\Directives\O2switch\DeployDirective;
 use AndyDefer\LaravelUtils\Tests\IntegrationTestCase;
+use App\Directives\O2switch\DeployDirective;
 use Illuminate\Support\Facades\Config;
 
 /**

@@ -27,7 +27,8 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "AndyDefer\\LaravelUtils\\Tests\\": "tests/"
+            "AndyDefer\\LaravelUtils\\Tests\\": "tests/",
+            "App\\": "app/"
         }
     },
     "extra": {

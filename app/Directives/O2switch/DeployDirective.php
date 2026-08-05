@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AndyDefer\LaravelUtils\Directives\O2switch;
+namespace App\Directives\O2switch;
 
 use AndyDefer\ConsoleWriter\Console\Components\KeyValue;
 use AndyDefer\ConsoleWriter\Console\Console;
@@ -12,7 +12,6 @@ use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
 use AndyDefer\DomainStructures\Utils\MapCollection;
 use AndyDefer\LaravelUtils\Contracts\Config\UtilsConfigInterface;
 use AndyDefer\LaravelUtils\Records\DeploymentResultRecord;
-use AndyDefer\LaravelUtils\Services\GitService;
 use AndyDefer\LaravelUtils\Services\SshService;
 
 /**
@@ -44,8 +43,6 @@ final class DeployDirective extends AbstractDirective
 
     private SshService $sshService;
 
-    private GitService $gitService;
-
     public function getSignature(): string
     {
         return 'o2switch:deploy 
@@ -57,6 +54,11 @@ final class DeployDirective extends AbstractDirective
     public function getAliases(): StringTypedCollection
     {
         return StringTypedCollection::from(['o2d', 'deploy']);
+    }
+
+    public static function getName(): string
+    {
+        return 'Hello';
     }
 
     public function getDescription(): string
@@ -86,22 +88,17 @@ final class DeployDirective extends AbstractDirective
     {
         $verbose = $this->getFlag('verbose');
 
-        $this->sshService = new SshService;
+        $this->sshService = $this->getApplication()->make(SshService::class);
         $this->sshService
             ->sshKey($this->deploymentConfig['ssh_key'])
             ->remotePath($this->deploymentConfig['remote_path'])
-            ->timeout(300)
-            ->verbose($verbose);
-
-        $this->gitService = new GitService;
-        $this->gitService
-            ->repositoryPath($this->deploymentConfig['remote_path'])
             ->timeout(300)
             ->verbose($verbose);
     }
 
     protected function execute(): ExitCode
     {
+
         $dryRun = $this->getFlag('dry-run');
         $force = $this->getFlag('force');
 
@@ -196,8 +193,9 @@ final class DeployDirective extends AbstractDirective
             ]);
         }
 
+        // Fetch
         $this->console->line('📦 Fetching latest code from repository...');
-        $fetchResult = $this->gitService->fetch('origin', $gitBranch);
+        $fetchResult = $this->sshService->gitFetch('origin', $gitBranch);
         $commandsExecuted[] = "git fetch origin {$gitBranch}";
 
         if (! $fetchResult->success) {
@@ -209,7 +207,6 @@ final class DeployDirective extends AbstractDirective
                 'success' => false,
                 'message' => 'Git fetch failed',
                 'error' => $fetchResult->error,
-                'fetch_result' => $fetchResult,
                 'commands_executed' => $commandsExecuted,
             ]);
         }
@@ -221,9 +218,10 @@ final class DeployDirective extends AbstractDirective
         $this->console->success('✅ Code fetched successfully');
         $this->console->line();
 
+        // Reset
         $this->console->line('🔄 Resetting to origin/'.$gitBranch.'...');
         $resetTarget = "origin/{$gitBranch}";
-        $resetResult = $this->gitService->reset($resetTarget, true);
+        $resetResult = $this->sshService->gitReset($resetTarget, true);
         $commandsExecuted[] = "git reset --hard {$resetTarget}";
 
         if (! $resetResult->success) {
@@ -235,8 +233,6 @@ final class DeployDirective extends AbstractDirective
                 'success' => false,
                 'message' => 'Git reset failed',
                 'error' => $resetResult->error,
-                'fetch_result' => $fetchResult,
-                'reset_result' => $resetResult,
                 'commands_executed' => $commandsExecuted,
             ]);
         }
@@ -250,8 +246,6 @@ final class DeployDirective extends AbstractDirective
         return DeploymentResultRecord::from([
             'success' => true,
             'message' => 'Deployment completed successfully',
-            'fetch_result' => $fetchResult,
-            'reset_result' => $resetResult,
             'commands_executed' => $commandsExecuted,
         ]);
     }

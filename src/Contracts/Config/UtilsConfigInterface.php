@@ -33,4 +33,14 @@ interface UtilsConfigInterface
      * @return array{ssh_key: string, remote_path: string, git_branch: string}
      */
     public function getDeploymentConfig(): array;
+
+    /**
+     * Get the source directory for publishing directives.
+     */
+    public function getPublishSourcePath(): string;
+
+    /**
+     * Get the target directory for publishing directives.
+     */
+    public function getPublishTargetPath(): string;
 }
