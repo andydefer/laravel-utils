@@ -14,6 +14,7 @@ use AndyDefer\LaravelUtils\Operations\DeployCodeOperation;
 use AndyDefer\LaravelUtils\Operations\SetupDependenciesOperation;
 use AndyDefer\LaravelUtils\Operations\SetupEnvironmentOperation;
 use AndyDefer\LaravelUtils\Operations\SetupFrontendAssetsOperation;
+use AndyDefer\LaravelUtils\Operations\SetupStorageOperation;
 use AndyDefer\LaravelUtils\Records\DeploymentResultRecord;
 use AndyDefer\LaravelUtils\Services\SshService;
 use AndyDefer\LaravelUtils\UI\DeploymentUI;
@@ -158,10 +159,25 @@ final class DeployDirective extends AbstractDirective
             $this->console
         );
 
+        if (! $envResult->success) {
+            $duration = microtime(true) - $this->contextGet('start_time');
+            DeploymentUI::displayResult($this->console, $envResult, $duration);
+
+            return ExitCode::FAILURE;
+        }
+
+        // Operation 8: Configuration du storage
+        $storageResult = SetupStorageOperation::handle(
+            $this->sshService,
+            $this->deploymentConfig['remote_path'],
+            $dryRun,
+            $this->console
+        );
+
         $duration = microtime(true) - $this->contextGet('start_time');
 
-        if (! $envResult->success) {
-            DeploymentUI::displayResult($this->console, $envResult, $duration);
+        if (! $storageResult->success) {
+            DeploymentUI::displayResult($this->console, $storageResult, $duration);
 
             return ExitCode::FAILURE;
         }
@@ -170,7 +186,8 @@ final class DeployDirective extends AbstractDirective
         $mergedCommands = $deployResult->commands_executed
             ->merge($dependenciesResult->commands_executed)
             ->merge($frontendResult->commands_executed)
-            ->merge($envResult->commands_executed);
+            ->merge($envResult->commands_executed)
+            ->merge($storageResult->commands_executed);
 
         $finalResult = DeploymentResultRecord::from([
             'success' => true,

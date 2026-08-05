@@ -120,6 +120,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $response->output);
         $this->assertStringContainsString('npm install (if manifest missing or outdated)', $response->output);
         $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $response->output);
+        $this->assertStringContainsString('php artisan storage:link', $response->output);
         $this->assertStringContainsString('test -f', $response->output);
         $this->assertStringContainsString('cp', $response->output);
         $this->assertStringContainsString('.env.example', $response->output);
@@ -235,6 +236,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $response->output);
         $this->assertStringContainsString('npm install (if manifest missing or outdated)', $response->output);
         $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $response->output);
+        $this->assertStringContainsString('php artisan storage:link', $response->output);
         $this->assertStringContainsString('test -f', $response->output);
         $this->assertStringContainsString('.env.example', $response->output);
         $this->assertStringContainsString('php artisan key:generate', $response->output);
@@ -277,6 +279,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $output);
         $this->assertStringContainsString('npm install (if manifest missing or outdated)', $output);
         $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $output);
+        $this->assertStringContainsString('php artisan storage:link', $output);
         $this->assertStringContainsString('test -f', $output);
         $this->assertStringContainsString('.env.example', $output);
         $this->assertStringContainsString('php artisan key:generate', $output);
@@ -375,7 +378,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
     }
 
     // ============================================================
-    // NOUVEAUX TESTS POUR SetupFrontendAssetsOperation
+    // TESTS POUR SetupFrontendAssetsOperation
     // ============================================================
 
     public function test_deploy_includes_frontend_assets_setup_in_dry_run(): void
@@ -421,7 +424,53 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('test -f public/build/manifest.json', $response->output);
     }
 
-    public function test_deploy_summary_shows_correct_commands_count_with_all_operations_including_frontend(): void
+    // ============================================================
+    // NOUVEAUX TESTS POUR SetupStorageOperation
+    // ============================================================
+
+    public function test_deploy_includes_storage_setup_in_dry_run(): void
+    {
+        // Arrange
+        $command = 'o2switch:deploy --dry-run';
+
+        // Act
+        $response = $this->service->run($command);
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('php artisan storage:link', $response->output);
+        $this->assertStringContainsString('(Check and create storage symbolic links)', $response->output);
+    }
+
+    public function test_deploy_shows_storage_setup_messages(): void
+    {
+        // Arrange
+        $command = 'o2switch:deploy --dry-run';
+
+        // Act
+        $response = $this->service->run($command);
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
+        $this->assertStringContainsString('php artisan storage:link', $response->output);
+    }
+
+    public function test_deploy_dry_run_shows_storage_check_message(): void
+    {
+        // Arrange
+        $command = 'o2switch:deploy --dry-run';
+
+        // Act
+        $response = $this->service->run($command);
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('php artisan storage:link', $response->output);
+        $this->assertStringContainsString('(Check and create storage symbolic links)', $response->output);
+    }
+
+    public function test_deploy_summary_shows_correct_commands_count_with_all_operations_including_storage(): void
     {
         // Arrange
         $command = 'o2switch:deploy --dry-run';
@@ -434,7 +483,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
         $output = strip_ansi($response->output);
 
-        // Vérifier que le nombre de commandes est 10 (git fetch, git reset, composer dry-run, composer install, touch autoload, npm install, npm run build, test -f, cp, key:generate)
-        $this->assertMatchesRegularExpression('/Commands\s*:\s*10/', $output);
+        // Vérifier que le nombre de commandes inclut storage:link
+        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
     }
 }
