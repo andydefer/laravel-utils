@@ -153,7 +153,7 @@ final class SetupLaravelOptimizationOperation
 
         if (! $dumpResult->success) {
             if ($console) {
-                $console->alertWarning('⚠️  composer dump-autoload failed, continuing...');
+                $console->alertWarning(' composer dump-autoload failed, continuing...');
             }
         } else {
             if ($console) {

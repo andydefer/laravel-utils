@@ -18,6 +18,7 @@ final class SetupEnvironmentOperation
             if ($console) {
                 $console->info('🔍 DRY RUN - Would execute:');
                 $console->line("   test -f {$remotePath}/.env || cp {$remotePath}/.env.example {$remotePath}/.env");
+                $console->line("   test -f {$remotePath}/.env.production && rsync -av {$remotePath}/.env.production {$remotePath}/.env");
                 $console->line('   php artisan key:generate');
                 $console->line();
             }
@@ -25,7 +26,7 @@ final class SetupEnvironmentOperation
             return DeploymentResultRecord::from([
                 'success' => true,
                 'message' => 'Environment setup dry run completed',
-                'commands_executed' => ['check .env', 'copy .env.example', 'key:generate'],
+                'commands_executed' => ['check .env', 'copy .env.example', 'rsync .env.production', 'key:generate'],
             ]);
         }
 
@@ -33,26 +34,58 @@ final class SetupEnvironmentOperation
         $checkEnvResult = $sshService->execute("test -f {$remotePath}/.env && echo 'EXISTS'", false);
         $commandsExecuted[] = "test -f {$remotePath}/.env";
 
-        // Si .env n'existe pas, copier .env.example
+        // Si .env n'existe pas
         if (! str_contains($checkEnvResult->output, 'EXISTS')) {
             if ($console) {
-                $console->info('📄 .env not found, copying from .env.example...');
+                $console->info('📄 .env not found...');
             }
 
-            $copyResult = $sshService->execute("cp {$remotePath}/.env.example {$remotePath}/.env", false);
-            $commandsExecuted[] = "cp {$remotePath}/.env.example {$remotePath}/.env";
+            // Vérifier si .env.production existe
+            $checkProductionResult = $sshService->execute("test -f {$remotePath}/.env.production && echo 'EXISTS'", false);
+            $commandsExecuted[] = "test -f {$remotePath}/.env.production";
 
-            if (! $copyResult->success) {
-                return DeploymentResultRecord::from([
-                    'success' => false,
-                    'message' => 'Failed to copy .env.example',
-                    'error' => $copyResult->error,
-                    'commands_executed' => $commandsExecuted,
-                ]);
-            }
+            // Si .env.production existe, le copier directement
+            if (str_contains($checkProductionResult->output, 'EXISTS')) {
+                if ($console) {
+                    $console->info('📄 .env.production found, copying to .env...');
+                }
 
-            if ($console) {
-                $console->success('✅ .env created from .env.example');
+                $rsyncResult = $sshService->execute("rsync -av {$remotePath}/.env.production {$remotePath}/.env", false);
+                $commandsExecuted[] = "rsync -av {$remotePath}/.env.production {$remotePath}/.env";
+
+                if (! $rsyncResult->success) {
+                    return DeploymentResultRecord::from([
+                        'success' => false,
+                        'message' => 'Failed to rsync .env.production to .env',
+                        'error' => $rsyncResult->error,
+                        'commands_executed' => $commandsExecuted,
+                    ]);
+                }
+
+                if ($console) {
+                    $console->success('✅ .env created from .env.production');
+                }
+            } else {
+                // Si .env.production n'existe pas, copier .env.example
+                if ($console) {
+                    $console->info('📄 .env.production not found, copying from .env.example...');
+                }
+
+                $copyResult = $sshService->execute("cp {$remotePath}/.env.example {$remotePath}/.env", false);
+                $commandsExecuted[] = "cp {$remotePath}/.env.example {$remotePath}/.env";
+
+                if (! $copyResult->success) {
+                    return DeploymentResultRecord::from([
+                        'success' => false,
+                        'message' => 'Failed to copy .env.example',
+                        'error' => $copyResult->error,
+                        'commands_executed' => $commandsExecuted,
+                    ]);
+                }
+
+                if ($console) {
+                    $console->success('✅ .env created from .env.example');
+                }
             }
         } else {
             if ($console) {
