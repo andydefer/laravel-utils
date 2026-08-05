@@ -31,6 +31,11 @@ final class SshService
         return $this;
     }
 
+    public function getSshKey(): string
+    {
+        return $this->sshKey;
+    }
+
     public function remotePath(string $path): self
     {
         $this->remotePath = $path;
