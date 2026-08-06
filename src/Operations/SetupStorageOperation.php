@@ -63,101 +63,76 @@ final class SetupStorageOperation
             }
         }
 
-        // Étape 2: Vérifier et créer les liens symboliques
+        // Étape 2: Vérifier le fichier config/filesystems.php local et distant
         if ($console) {
-            $console->info('🔗 Checking storage symbolic links...');
+            $console->info('📄 Checking config/filesystems.php...');
         }
 
-        // Récupérer la configuration des liens depuis le fichier config/filesystems.php
-        $configContent = $sshService->execute("cat {$remotePath}/config/filesystems.php 2>/dev/null || echo ''", false);
-        $commandsExecuted[] = "cat {$remotePath}/config/filesystems.php";
+        $localConfigPath = getcwd().'/config/filesystems.php';
+        $remoteConfigPath = "{$remotePath}/config/filesystems.php";
 
-        $linksMissing = false;
+        $needsStorageLink = false;
 
-        // Vérifier le lien storage public
-        $publicLinkExists = $sshService->execute("test -L {$remotePath}/public/storage && echo 'EXISTS'", false);
-        $commandsExecuted[] = "test -L {$remotePath}/public/storage";
+        // Vérifier si le fichier config existe localement
+        if (file_exists($localConfigPath)) {
+            // Récupérer la date de modification locale
+            $localMtime = filemtime($localConfigPath);
 
-        if (! str_contains($publicLinkExists->output, 'EXISTS')) {
-            if ($console) {
-                $console->alertWarning(' public/storage symbolic link is missing');
-            }
-            $linksMissing = true;
-        } else {
-            if ($console) {
-                $console->success('✅ public/storage symbolic link exists');
-            }
-        }
+            // Récupérer la date de modification distante
+            $remoteMtimeResult = $sshService->execute("stat -c %Y {$remoteConfigPath} 2>/dev/null || echo '0'", false);
+            $commandsExecuted[] = "stat -c %Y {$remoteConfigPath}";
+            $remoteMtime = (int) trim($remoteMtimeResult->output);
 
-        // Vérifier les autres liens configurés en comparant les hashs et les dates
-        if (str_contains($configContent->output, "'links' => [")) {
-            preg_match_all("/'([^']+)'\s*=>\s*'([^']+)'/", $configContent->output, $matches);
+            // Récupérer le hash local
+            $localHash = md5_file($localConfigPath);
 
-            for ($i = 0; $i < count($matches[0]); $i++) {
-                $link = $matches[1][$i];
-                $target = $matches[2][$i];
+            // Récupérer le hash distant
+            $remoteHashResult = $sshService->execute("md5sum {$remoteConfigPath} 2>/dev/null | cut -d' ' -f1 || echo ''", false);
+            $commandsExecuted[] = "md5sum {$remoteConfigPath}";
+            $remoteHash = trim($remoteHashResult->output);
 
-                if ($link === 'public/storage') {
-                    continue;
+            // Comparer les dates et les hashs
+            if ($localMtime > $remoteMtime || $localHash !== $remoteHash) {
+                if ($console) {
+                    if ($remoteMtime === 0) {
+                        $console->alertWarning(' config/filesystems.php not found on server, will sync...');
+                    } elseif ($localMtime > $remoteMtime) {
+                        $console->alertWarning(' config/filesystems.php is newer locally, syncing...');
+                    } else {
+                        $console->alertWarning(' config/filesystems.php has changed, syncing...');
+                    }
                 }
 
-                // Vérifier si le lien existe
-                $linkExists = $sshService->execute("test -L {$remotePath}/{$link} && echo 'EXISTS'", false);
-                $commandsExecuted[] = "test -L {$remotePath}/{$link}";
+                // Copier le fichier config vers le serveur
+                $copyConfigResult = $sshService->execute(
+                    "scp {$localConfigPath} {$sshService->getSshKey()}:{$remoteConfigPath}",
+                    false
+                );
+                $commandsExecuted[] = "scp config/filesystems.php {$remoteConfigPath}";
 
-                if (! str_contains($linkExists->output, 'EXISTS')) {
+                if ($copyConfigResult->success) {
                     if ($console) {
-                        $console->alertWarning("⚠️  {$link} symbolic link is missing");
+                        $console->success('✅ config/filesystems.php synced to server');
                     }
-                    $linksMissing = true;
-
-                    continue;
-                }
-
-                // Vérifier si le lien pointe vers le bon target
-                $linkTarget = $sshService->execute("readlink {$remotePath}/{$link} 2>/dev/null || echo ''", false);
-                $commandsExecuted[] = "readlink {$remotePath}/{$link}";
-                $currentTarget = trim($linkTarget->output);
-
-                if ($currentTarget !== $target) {
-                    if ($console) {
-                        $console->alertWarning("⚠️  {$link} points to wrong target ({$currentTarget}), should be {$target}");
-                    }
-                    $linksMissing = true;
-
-                    continue;
-                }
-
-                // Vérifier les dates de modification
-                $linkMtimeResult = $sshService->execute("stat -c %Y {$remotePath}/{$link} 2>/dev/null || echo '0'", false);
-                $commandsExecuted[] = "stat -c %Y {$remotePath}/{$link}";
-                $linkMtime = (int) trim($linkMtimeResult->output);
-
-                $targetMtimeResult = $sshService->execute("stat -c %Y {$target} 2>/dev/null || echo '0'", false);
-                $commandsExecuted[] = "stat -c %Y {$target}";
-                $targetMtime = (int) trim($targetMtimeResult->output);
-
-                // Vérifier les hashs des fichiers source et destination
-                $targetHash = $sshService->execute("find {$target} -type f -exec md5sum {} \; | sort -k 2 | md5sum | cut -d' ' -f1 2>/dev/null || echo ''", false);
-                $commandsExecuted[] = "find {$target} -type f -exec md5sum {} \\; | sort -k 2 | md5sum | cut -d' ' -f1";
-                $targetHashValue = trim($targetHash->output);
-
-                // Si le target a changé ou est plus récent que le lien, on doit recréer
-                if ($targetMtime > $linkMtime) {
-                    if ($console) {
-                        $console->alertWarning("⚠️  {$link} is outdated, target has been modified");
-                    }
-                    $linksMissing = true;
+                    $needsStorageLink = true;
                 } else {
                     if ($console) {
-                        $console->success("✅ {$link} symbolic link is up to date");
+                        $console->alertWarning('⚠️  Failed to sync config/filesystems.php, continuing...');
                     }
                 }
+            } else {
+                if ($console) {
+                    $console->success('✅ config/filesystems.php is up to date');
+                }
+            }
+        } else {
+            if ($console) {
+                $console->alertWarning('⚠️  config/filesystems.php not found locally, skipping...');
             }
         }
 
-        // Étape 3: Exécuter storage:link si des liens manquent
-        if ($linksMissing) {
+        // Étape 3: Exécuter storage:link si nécessaire
+        if ($needsStorageLink) {
             if ($console) {
                 $console->info('🔗 Creating storage symbolic links...');
             }
@@ -179,7 +154,7 @@ final class SetupStorageOperation
             }
         } else {
             if ($console) {
-                $console->success('✅ All storage symbolic links are present and up to date');
+                $console->success('✅ No storage link update needed');
             }
         }
 
