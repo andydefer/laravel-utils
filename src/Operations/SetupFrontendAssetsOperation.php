@@ -44,7 +44,7 @@ final class SetupFrontendAssetsOperation
         // Si manifest.json n'existe pas, il faut build
         if (! str_contains($manifestExists->output, 'EXISTS')) {
             if ($console) {
-                $console->alertWarning('public/build/manifest.json not found, building assets...');
+                $console->alertWarning(' public/build/manifest.json not found, building assets...');
             }
             $needsBuild = true;
         } else {
@@ -71,7 +71,7 @@ final class SetupFrontendAssetsOperation
                 // Si package.json est plus récent que manifest.json, il faut rebuild
                 if ($packageTime > $manifestTime) {
                     if ($console) {
-                        $console->alertWarning('package.json is newer than manifest.json, rebuilding assets...');
+                        $console->alertWarning(' package.json is newer than manifest.json, rebuilding assets...');
                     }
                     $needsBuild = true;
                 } else {
@@ -81,7 +81,7 @@ final class SetupFrontendAssetsOperation
                 }
             } else {
                 if ($console) {
-                    $console->alertWarning('package.json not found, skipping asset build');
+                    $console->alertWarning(' package.json not found, skipping asset build');
                 }
             }
         }

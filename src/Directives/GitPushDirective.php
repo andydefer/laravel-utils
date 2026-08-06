@@ -39,6 +39,10 @@ final class GitPushDirective extends AbstractDirective
 
     private VirtualTerminalService $vt;
 
+    private float $lastRenderTime = 0; // ✅ Changé en float
+
+    private const RENDER_INTERVAL = 300000; // 300ms en microsecondes
+
     public function getSignature(): string
     {
         return 'utils:git-push 
@@ -73,6 +77,7 @@ final class GitPushDirective extends AbstractDirective
         $this->console->line();
 
         $this->isVerbose = $this->getFlag('verbose');
+        $this->lastRenderTime = 0.0;
     }
 
     private function loadConfiguration(): void
@@ -80,6 +85,15 @@ final class GitPushDirective extends AbstractDirective
         $app = $this->getApplication();
         $this->config = $app->make(UtilsConfigInterface::class);
         $this->repositories = $this->config->getRepositories();
+    }
+
+    private function renderWithThrottle(): void
+    {
+        $now = microtime(true) * 1000000; // microsecondes
+        if ($now - $this->lastRenderTime >= self::RENDER_INTERVAL) {
+            $this->vt->render();
+            $this->lastRenderTime = $now;
+        }
     }
 
     protected function execute(): ExitCode
@@ -239,7 +253,7 @@ final class GitPushDirective extends AbstractDirective
             if (in_array($source, $available, true)) {
                 $valid[] = $source;
             } else {
-                $this->console->alertWarning("⚠️  Target '{$source}' does not exist in configuration");
+                $this->console->alertWarning(" Target '{$source}' does not exist in configuration");
                 $hasInvalid = true;
             }
         }
@@ -275,7 +289,7 @@ final class GitPushDirective extends AbstractDirective
 
         if ($testResult !== ExitCode::SUCCESS) {
             if ($force) {
-                $this->console->alertWarning('Tests failed but --force is enabled, continuing...');
+                $this->console->alertWarning(' Tests failed but --force is enabled, continuing...');
                 $this->console->line();
 
                 return ExitCode::SUCCESS;
@@ -294,22 +308,19 @@ final class GitPushDirective extends AbstractDirective
 
     private function runTests(): ExitCode
     {
-        // Récupérer la liste des tests pour compter
         $listProcess = new Process(['./vendor/bin/phpunit', '--list-tests']);
         $listProcess->run();
         $testList = $listProcess->getOutput();
 
-        // Compter les tests
         $this->totalTests = substr_count($testList, ' - ');
         $this->currentTest = 0;
 
         if ($this->totalTests === 0) {
-            $this->console->alertWarning('No tests found');
+            $this->console->alertWarning(' No tests found');
 
             return ExitCode::SUCCESS;
         }
 
-        // Extraire les noms des tests
         $testNames = [];
         $lines = explode("\n", $testList);
         foreach ($lines as $line) {
@@ -318,51 +329,46 @@ final class GitPushDirective extends AbstractDirective
             }
         }
 
-        // Créer la progress bar avec VT
-        $vt = new VirtualTerminalService($this->console->getAnsiConverter());
+        $this->vt->clear();
+        $this->vt->add('status', '🧪 Running tests...');
+        $this->vt->add('progress', '');
+        $this->vt->add('current_test', '');
+        $this->vt->add('count', '');
+        $this->vt->render();
+        $this->lastRenderTime = microtime(true) * 1000000;
 
-        // Ajouter la ligne de progression
-        $vt->add('progress', '');
-        $vt->add('current_test', '');
-        $vt->add('count', '');
-        $vt->render();
-
-        // Créer une progress bar personnalisée
         $bar = new ProgressBar(
             $this->totalTests,
             40,
             '🧪 Tests',
             '',
             true,
-            $vt,
+            $this->vt,
             'progress'
         );
 
-        // Lancer PHPUnit
         $process = new Process(['./vendor/bin/phpunit', '--stop-on-failure']);
         $process->setTimeout(300);
         $process->start();
 
         $dotCount = 0;
 
-        $process->wait(function ($type, $buffer) use (&$dotCount, $testNames, $bar, $vt) {
+        $process->wait(function ($type, $buffer) use (&$dotCount, $testNames, $bar) {
             $buffer = trim($buffer);
 
             if ($buffer === '.') {
                 $dotCount++;
                 $this->currentTest = $dotCount;
 
-                // Mettre à jour le nom du test courant
                 $currentTestName = $testNames[$dotCount - 1] ?? 'Running...';
                 $this->currentTestName = $currentTestName;
 
-                // Mettre à jour la barre
                 $bar->advance();
 
-                // Mettre à jour le nom du test et le compteur
-                $vt->update('current_test', '   📝 '.$currentTestName);
-                $vt->update('count', '   📊 '.$this->currentTest.' / '.$this->totalTests);
-                $vt->render();
+                $this->vt->update('current_test', '   '.$currentTestName);
+                $this->vt->update('count', '   '.$this->currentTest.' / '.$this->totalTests);
+
+                $this->renderWithThrottle();
 
                 if ($this->isVerbose) {
                     $this->console->line('   ✅ '.$currentTestName);
@@ -372,19 +378,17 @@ final class GitPushDirective extends AbstractDirective
             }
         });
 
-        // Fin de la barre
         $bar->finish();
 
-        // Afficher le résultat final
-        $vt->remove('current_test');
-        $vt->remove('count');
+        $this->vt->remove('current_test');
+        $this->vt->remove('count');
 
         if ($process->isSuccessful()) {
-            $vt->update('status', '✅ All '.$this->totalTests.' tests passed successfully');
+            $this->vt->update('status', '✅ All '.$this->totalTests.' tests passed successfully');
         } else {
-            $vt->update('status', '❌ Tests failed at: '.$this->currentTestName);
+            $this->vt->update('status', '❌ Tests failed at: '.$this->currentTestName);
         }
-        $vt->render();
+        $this->vt->render();
 
         if ($this->isVerbose) {
             if ($process->getOutput()) {
@@ -453,7 +457,7 @@ final class GitPushDirective extends AbstractDirective
             $remoteUrl = $this->repositories[$source] ?? null;
 
             if (! $remoteUrl) {
-                $this->console->alertWarning("   ⚠️  Target '{$source}' has no URL configured");
+                $this->console->alertWarning(" Target '{$source}' has no URL configured");
 
                 continue;
             }

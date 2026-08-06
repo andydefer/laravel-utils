@@ -222,7 +222,7 @@ final class GitDiffDirective extends AbstractDirective
         $recipeNames = array_keys($this->extensionRecipes);
 
         if (empty($recipeNames)) {
-            $this->console->alertWarning('No recipes configured');
+            $this->console->alertWarning(' No recipes configured');
 
             return [];
         }
@@ -412,7 +412,7 @@ final class GitDiffDirective extends AbstractDirective
         $name = $this->console->ask('📝 Work summary name (without extension):');
 
         if (empty($name)) {
-            $this->console->alertWarning('No name provided, skipping summary creation');
+            $this->console->alertWarning(' No name provided, skipping summary creation');
 
             return;
         }
@@ -434,7 +434,7 @@ final class GitDiffDirective extends AbstractDirective
         fclose($handle);
 
         if (empty($content)) {
-            $this->console->alertWarning('No content provided, skipping summary creation');
+            $this->console->alertWarning(' No content provided, skipping summary creation');
 
             return;
         }

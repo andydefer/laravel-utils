@@ -203,7 +203,7 @@ final class PublishDirective extends AbstractDirective
             }
 
             if ($this->filesystem->exists($targetPath) && ! $force) {
-                $this->console->alertWarning('⏭️  Skipping: '.$fileName.' (already exists, use --force to overwrite)');
+                $this->console->alertWarning(' ⏭️  Skipping: '.$fileName.' (already exists, use --force to overwrite)');
                 $this->skipped++;
 
                 continue;
@@ -224,7 +224,7 @@ final class PublishDirective extends AbstractDirective
         $this->console->info('📊 Summary:');
         $this->console->line('   Copied: '.$this->copied.' file(s)');
         if ($this->skipped > 0) {
-            $this->console->alertWarning(' Skipped: '.$this->skipped.' file(s) (use --force to overwrite)');
+            $this->console->alertWarning('  Skipped: '.$this->skipped.' file(s) (use --force to overwrite)');
         }
     }
 
