@@ -8,6 +8,7 @@ use AndyDefer\Directive\Enums\ExitCode;
 use AndyDefer\Directive\Services\DirectiveTestingService;
 use AndyDefer\LaravelUtils\Configs\UtilsConfig;
 use AndyDefer\LaravelUtils\Contracts\Config\UtilsConfigInterface;
+use AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective;
 use AndyDefer\LaravelUtils\Tests\IntegrationTestCase;
 use App\Directives\O2switch\DeployDirective;
 use Illuminate\Support\Facades\Config;
@@ -27,6 +28,8 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     private array $originalExportAssets;
 
+    private array $originalPipelines;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -34,6 +37,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
         // Save original configurations
         $this->originalDeploymentConfig = config('utils.deployment', []);
         $this->originalExportAssets = config('utils.export_assets', []);
+        $this->originalPipelines = config('utils.pipelines', []);
 
         // Default test config
         Config::set('utils.deployment', [
@@ -47,17 +51,20 @@ final class DeployDirectiveTest extends IntegrationTestCase
             'storage/app/public/videos',
         ]);
 
+        Config::set('utils.pipelines', []);
+
         $this->app->singleton(UtilsConfigInterface::class, function ($app) {
             return new UtilsConfig($app['config']);
         });
 
         $this->service = new DirectiveTestingService(
             application: $this->app,
-            sourcePaths: []
+            sourcePaths: [__DIR__.'/../../Fixtures/Directives']
         );
 
         $kernel = $this->service->getKernel();
         $kernel->addDirective(DeployDirective::class);
+        $kernel->addDirective(PingDirective::class);
     }
 
     protected function tearDown(): void
@@ -65,6 +72,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
         // Restore original configurations
         Config::set('utils.deployment', $this->originalDeploymentConfig);
         Config::set('utils.export_assets', $this->originalExportAssets);
+        Config::set('utils.pipelines', $this->originalPipelines);
 
         $this->service->destroy();
         parent::tearDown();
@@ -195,13 +203,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->app->singleton(UtilsConfigInterface::class, function ($app) {
             return new UtilsConfig($app['config']);
         });
-
-        $this->service->destroy();
-        $this->service = new DirectiveTestingService(
-            application: $this->app,
-            sourcePaths: []
-        );
-        $this->service->getKernel()->addDirective(DeployDirective::class);
 
         $response = $this->service->run('o2switch:deploy --dry-run');
 
@@ -507,13 +508,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
             return new UtilsConfig($app['config']);
         });
 
-        $this->service->destroy();
-        $this->service = new DirectiveTestingService(
-            application: $this->app,
-            sourcePaths: []
-        );
-        $this->service->getKernel()->addDirective(DeployDirective::class);
-
         $response = $this->service->run('o2switch:deploy --dry-run');
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
@@ -541,5 +535,171 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('rsync -avz assets to', $response->output);
         $this->assertStringContainsString('videos:hls (would generate HLS)', $response->output);
         $this->assertStringNotContainsString('images:compress', $response->output);
+    }
+
+    // ============================================================
+    // TESTS POUR ExecutePipelinesOperation
+    // ============================================================
+
+    public function test_deploy_executes_pipelines_from_config(): void
+    {
+        // Arrange
+        Config::set('utils.pipelines', [
+            'ping',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        // Act
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: ping', $response->output);
+    }
+
+    public function test_deploy_executes_multiple_pipelines_from_config(): void
+    {
+        // Arrange
+        Config::set('utils.pipelines', [
+            'ping',
+            'ping --delay=1',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        // Act
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        // En dry-run, on vérifie les messages "Would execute:"
+        $this->assertStringContainsString('Would execute: ping', $response->output);
+        $this->assertStringContainsString('Would execute: ping --delay=1', $response->output);
+    }
+
+    public function test_deploy_executes_pipeline_with_fqcn_and_args(): void
+    {
+        // Arrange
+        Config::set('utils.pipelines', [
+            [PingDirective::class, ['1']],
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        // Act
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
+    }
+
+    public function test_deploy_executes_pipeline_with_mixed_types(): void
+    {
+        // Arrange
+        Config::set('utils.pipelines', [
+            'ping',
+            [PingDirective::class, []],
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        // Act
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        // En dry-run, on vérifie les messages "Would execute:"
+        $this->assertStringContainsString('Would execute: ping', $response->output);
+        $this->assertStringContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
+    }
+
+    public function test_deploy_skips_pipelines_when_not_configured(): void
+    {
+        // Arrange - déjà fait dans setUp avec Config::set('utils.pipelines', [])
+
+        // Act
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = strip_ansi($response->output);
+        $this->assertStringContainsString('No pipelines configured to execute', $output);
+    }
+
+    public function test_deploy_skips_pipelines_in_dry_run(): void
+    {
+        // Arrange
+        Config::set('utils.pipelines', [
+            'ping',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        // Act
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('dry-run', $response->output);
+    }
+
+    public function test_deploy_summary_shows_pipeline_commands_count(): void
+    {
+        // Arrange
+        Config::set('utils.pipelines', [
+            'ping',
+            'ping --delay=1',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        // Act
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = strip_ansi($response->output);
+
+        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
+    }
+
+    public function test_deploy_pipelines_with_skip_export_flag_does_not_affect_pipelines(): void
+    {
+        // Arrange
+        Config::set('utils.pipelines', [
+            'ping',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        // Act
+        $response = $this->service->run('o2switch:deploy --force --dry-run --skip-export');
+
+        // Assert
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        // En dry-run, on voit "Would execute: ping" pas "pong"
+        $this->assertStringContainsString('Would execute: ping', $response->output);
+        $this->assertStringContainsString('Skipping assets export', $response->output);
     }
 }
