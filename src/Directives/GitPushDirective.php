@@ -370,7 +370,6 @@ final class GitPushDirective extends AbstractDirective
         }
 
         $this->vt->clear();
-        $this->vt->add('status', '🧪 Running tests...');
         $this->vt->add('progress', $this->buildProgressBar(0, $this->totalTests, '🧪 Tests'));
         $this->vt->add('current_test', '');
         $this->vt->add('count', '');
