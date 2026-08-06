@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace AndyDefer\LaravelUtils\Operations;
 
 use AndyDefer\ConsoleWriter\Console\Components\KeyValue;
+use AndyDefer\ConsoleWriter\Console\Components\Logger;
 use AndyDefer\ConsoleWriter\Console\Console;
+use AndyDefer\ConsoleWriter\Console\Services\VirtualTerminalService;
 use AndyDefer\Directive\DirectiveKernel;
 use AndyDefer\Directive\Enums\ExitCode;
 use AndyDefer\DomainStructures\Utils\MapCollection;
@@ -18,6 +20,18 @@ use AndyDefer\PhpServices\Services\FileSystemService;
 
 final class ExportAssetsOperation
 {
+    private const BAR_WIDTH = 40;
+
+    private const COMPLETE_CHAR = '█';
+
+    private const EMPTY_CHAR = '░';
+
+    private const RENDER_INTERVAL = 300000; // 300ms
+
+    private static float $lastRenderTime = 0;
+
+    private static ?VirtualTerminalService $vt = null;
+
     public static function handle(
         SshService $sshService,
         string $remotePath,
@@ -34,15 +48,15 @@ final class ExportAssetsOperation
 
         if ($dryRun) {
             if ($console) {
-                $console->info('🔍 DRY RUN - Would execute:');
-                $console->line("   rsync -avz assets to {$remotePath}");
+                echo Logger::info('🔍 DRY RUN - Would execute:')."\n";
+                echo Logger::info("   rsync -avz assets to {$remotePath}")."\n";
                 if (! $noCompress) {
-                    $console->line('   images:compress (would compress images)');
+                    echo Logger::info('   images:compress (would compress images)')."\n";
                 }
                 if ($hls) {
-                    $console->line('   videos:hls (would generate HLS)');
+                    echo Logger::info('   videos:hls (would generate HLS)')."\n";
                 }
-                $console->line();
+                echo "\n";
             }
 
             return DeploymentResultRecord::from([
@@ -53,77 +67,75 @@ final class ExportAssetsOperation
         }
 
         if ($console) {
-            $console->info('📦 Exporting assets to server...');
-            $console->line();
+            echo Logger::info('📦 Exporting assets to server...')."\n";
+            echo "\n";
         }
 
         $fileSystem = new FileSystemService;
         $tempDir = sys_get_temp_dir().'/laravel-utils-export-'.uniqid();
         $fileSystem->ensureDirectoryExists($tempDir);
 
+        if ($console) {
+            self::$vt = new VirtualTerminalService($console->getAnsiConverter());
+            self::$lastRenderTime = 0;
+        }
+
         $totalSizeBefore = 0;
         $totalSizeAfter = 0;
         $processedAssets = 0;
         $skippedAssets = 0;
 
-        // Récupérer les configurations
         $hlsConfig = $config ? $config->getHlsConfig() : [];
         $imageCompressConfig = $config ? $config->getImageCompressConfig() : [];
 
         foreach ($assets as $asset) {
             $sourcePath = getcwd().'/'.$asset;
-            $assetName = basename($asset);
-            $remoteAssetPath = $remotePath.'/'.$assetName;
+            $assetName = $asset;
+            $remoteAssetPath = rtrim($remotePath, '/').'/'.ltrim($assetName, '/');
 
             if (! $fileSystem->exists($sourcePath)) {
                 if ($console) {
-                    $console->alertWarning("⚠️  Asset not found locally: {$asset}");
+                    echo Logger::warning("⚠️  Asset not found locally: {$asset}")."\n";
                 }
                 $skippedAssets++;
 
                 continue;
             }
 
-            $remoteExists = self::remoteAssetExists($sshService, $remoteAssetPath);
-
-            if (! $force && $remoteExists) {
-                if ($console) {
-                    $console->logWarning("⏭️  Asset already exists on server: {$asset} (use --force to overwrite)");
-                }
-                $skippedAssets++;
-
-                continue;
-            }
+            self::createRemoteDirectory($sshService, $remoteAssetPath, $console);
+            self::cleanTemporaryFiles($sshService, $remoteAssetPath, $console);
 
             if ($console) {
-                $console->logInfo("📦 Processing asset: {$asset}");
-                if ($remoteExists) {
-                    $console->logWarning('   ⚠️  Asset exists on server, will overwrite (--force enabled)');
-                }
+                echo Logger::info("📦 Processing asset: {$asset}")."\n";
             }
 
-            $assetTempDir = $tempDir.'/'.$assetName;
+            $assetTempDir = $tempDir.'/'.basename($asset);
             $fileSystem->ensureDirectoryExists($assetTempDir);
 
-            $copyResult = $fileSystem->copy($sourcePath, $assetTempDir.'/'.$assetName);
+            if (is_dir($sourcePath)) {
+                $copyResult = self::copyDirectory($fileSystem, $sourcePath, $assetTempDir);
+            } else {
+                $copyResult = $fileSystem->copy($sourcePath, $assetTempDir.'/'.basename($asset));
+            }
+
             $commandsExecuted[] = "cp {$asset} to temp";
 
             if (! $copyResult) {
                 if ($console) {
-                    $console->logError("❌ Failed to copy asset: {$asset}");
+                    echo Logger::error("❌ Failed to copy asset: {$asset}")."\n";
                 }
                 $skippedAssets++;
 
                 continue;
             }
 
-            $sizeBefore = $fileSystem->size($assetTempDir.'/'.$assetName);
+            $sizeBefore = self::getDirectorySize($fileSystem, $assetTempDir);
             $totalSizeBefore += $sizeBefore;
 
             // Compression des images
             if (! $noCompress && $kernel !== null) {
                 if ($console) {
-                    $console->logInfo("📦 Compressing images in: {$asset}");
+                    echo Logger::info("📦 Compressing images in: {$asset}")."\n";
                 }
 
                 $imageExtensions = ImageExtension::values();
@@ -142,13 +154,15 @@ final class ExportAssetsOperation
                 }
 
                 if ($hasImages) {
-                    // Construction de la commande avec la config
                     $pngQuality = $imageCompressConfig['png_quality'] ?? '45-50';
                     $jpgQuality = $imageCompressConfig['jpg_quality'] ?? 50;
                     $maxSize = $imageCompressConfig['max_size'] ?? 0;
                     $stripMeta = $imageCompressConfig['strip_meta'] ?? false;
 
-                    $imageCommand = "images:compress {$assetTempDir}/{$assetName} {$assetTempDir}/compressed";
+                    $compressedDir = $assetTempDir.'_compressed';
+                    $fileSystem->ensureDirectoryExists($compressedDir);
+
+                    $imageCommand = "images:compress {$assetTempDir} {$compressedDir}";
                     $imageCommand .= " {$pngQuality} {$jpgQuality} {$maxSize}";
                     $imageCommand .= ' --recursive --force';
 
@@ -160,17 +174,19 @@ final class ExportAssetsOperation
                     $commandsExecuted[] = $imageCommand;
 
                     if ($result === ExitCode::SUCCESS) {
-                        if ($fileSystem->exists($assetTempDir.'/compressed/'.$assetName)) {
-                            $fileSystem->delete($assetTempDir.'/'.$assetName);
-                            $fileSystem->move($assetTempDir.'/compressed/'.$assetName, $assetTempDir.'/'.$assetName);
-                            $fileSystem->deleteDirectory($assetTempDir.'/compressed');
+                        if ($fileSystem->exists($compressedDir)) {
+                            $fileSystem->deleteDirectory($assetTempDir);
+                            $fileSystem->move($compressedDir, $assetTempDir);
                             if ($console) {
-                                $console->logSuccess("✅ Images compressed for: {$asset}");
+                                echo Logger::success("✅ Images compressed for: {$asset}")."\n";
                             }
                         }
                     } else {
                         if ($console) {
-                            $console->logWarning("⚠️  Compression failed for: {$asset}, using original");
+                            echo Logger::warning("⚠️  Compression failed for: {$asset}, using original")."\n";
+                        }
+                        if ($fileSystem->exists($compressedDir)) {
+                            $fileSystem->deleteDirectory($compressedDir);
                         }
                     }
                 }
@@ -179,7 +195,7 @@ final class ExportAssetsOperation
             // Génération HLS
             if ($hls && $kernel !== null) {
                 if ($console) {
-                    $console->logInfo("📦 Generating HLS for videos in: {$asset}");
+                    echo Logger::info("📦 Generating HLS for videos in: {$asset}")."\n";
                 }
 
                 $hasVideos = false;
@@ -194,14 +210,16 @@ final class ExportAssetsOperation
                 }
 
                 if ($hasVideos) {
-                    // Construction de la commande HLS avec la config
                     $segmentDuration = $hlsConfig['segment_duration'] ?? 4;
                     $crf = $hlsConfig['crf'] ?? 28;
                     $preset = $hlsConfig['preset'] ?? 'fast';
                     $audioBitrate = $hlsConfig['audio_bitrate'] ?? '128k';
                     $resolutions = implode(',', $hlsConfig['resolutions'] ?? ['144', '240', '360', '480', '720']);
 
-                    $hlsCommand = "videos:hls {$assetTempDir}/{$assetName} {$assetTempDir}/hls";
+                    $hlsDir = $assetTempDir.'_hls';
+                    $fileSystem->ensureDirectoryExists($hlsDir);
+
+                    $hlsCommand = "videos:hls {$assetTempDir} {$hlsDir}";
                     $hlsCommand .= " {$segmentDuration} {$crf}";
                     $hlsCommand .= " {$preset} {$audioBitrate}";
                     $hlsCommand .= " [{$resolutions}]";
@@ -211,32 +229,42 @@ final class ExportAssetsOperation
                     $commandsExecuted[] = $hlsCommand;
 
                     if ($result === ExitCode::SUCCESS) {
-                        if ($console) {
-                            $console->logSuccess("✅ HLS generated for: {$asset}");
+                        if ($fileSystem->exists($hlsDir)) {
+                            self::mergeDirectory($fileSystem, $hlsDir, $assetTempDir);
+                            $fileSystem->deleteDirectory($hlsDir);
+                            if ($console) {
+                                echo Logger::success("✅ HLS generated for: {$asset}")."\n";
+                            }
                         }
                     } else {
                         if ($console) {
-                            $console->logWarning("⚠️  HLS generation failed for: {$asset}");
+                            echo Logger::warning("⚠️  HLS generation failed for: {$asset}")."\n";
+                        }
+                        if ($fileSystem->exists($hlsDir)) {
+                            $fileSystem->deleteDirectory($hlsDir);
                         }
                     }
                 }
             }
 
-            $sizeAfter = $fileSystem->size($assetTempDir);
+            $sizeAfter = self::getDirectorySize($fileSystem, $assetTempDir);
             $totalSizeAfter += $sizeAfter;
 
-            if ($console) {
-                $console->logInfo("📤 Uploading {$asset} to server...");
-            }
+            // ✅ Upload FICHIER PAR FICHIER vers le dossier cible
+            $uploadSuccess = self::uploadDirectoryFiles(
+                $fileSystem,
+                $sshService,
+                $assetTempDir,
+                $remoteAssetPath,
+                $asset,
+                $console
+            );
 
-            $rsyncCommand = "rsync -avz --delete {$assetTempDir}/ {$sshService->getSshKey()}:{$remotePath}/{$assetName}/";
-            $rsyncResult = $sshService->execute($rsyncCommand, false);
             $commandsExecuted[] = "rsync -avz {$asset} to server";
 
-            if (! $rsyncResult->success) {
+            if (! $uploadSuccess) {
                 if ($console) {
-                    $console->logError("❌ Failed to upload asset: {$asset}");
-                    $console->logError('Error: '.$rsyncResult->error);
+                    echo Logger::error("❌ Failed to upload asset: {$asset}")."\n";
                 }
                 $skippedAssets++;
 
@@ -244,21 +272,23 @@ final class ExportAssetsOperation
             }
 
             if ($console) {
-                $console->logSuccess("✅ Asset uploaded: {$asset}");
+                echo Logger::success("✅ Asset uploaded: {$asset}")."\n";
                 $saved = $sizeBefore - $sizeAfter;
                 if ($saved > 0) {
-                    $console->logInfo('   Saved: '.FileSizeUnit::format($saved));
+                    echo Logger::info('   Saved: '.FileSizeUnit::format($saved))."\n";
                 }
-                $console->logInfo('   ───────────────────────────────────────────────');
+                echo Logger::info('   ───────────────────────────────────────────────')."\n";
             }
 
             $processedAssets++;
         }
 
-        $fileSystem->deleteDirectory($tempDir);
+        if ($fileSystem->exists($tempDir)) {
+            $fileSystem->deleteDirectory($tempDir);
+        }
 
         if ($console) {
-            $console->line();
+            echo "\n";
             $summary = MapCollection::from([
                 'Assets processed' => $processedAssets,
                 'Assets skipped' => $skippedAssets,
@@ -267,8 +297,8 @@ final class ExportAssetsOperation
                 'Space saved' => FileSizeUnit::format($totalSizeBefore - $totalSizeAfter),
             ]);
             $console->raw(KeyValue::renderWithValueColor($summary, 'yellow'));
-            $console->line();
-            $console->logSuccess("✅ Assets export completed: {$processedAssets} assets");
+            echo "\n";
+            echo Logger::success("✅ Assets export completed: {$processedAssets} assets")."\n";
         }
 
         return DeploymentResultRecord::from([
@@ -278,10 +308,243 @@ final class ExportAssetsOperation
         ]);
     }
 
-    private static function remoteAssetExists(SshService $sshService, string $remotePath): bool
-    {
-        $result = $sshService->execute("test -d {$remotePath} && echo 'EXISTS'", false);
+    private static function uploadDirectoryFiles(
+        FileSystemService $fileSystem,
+        SshService $sshService,
+        string $sourceDir,
+        string $remotePath,
+        string $assetName,
+        ?Console $console
+    ): bool {
+        if ($console && self::$vt) {
+            self::$vt->clear();
+            self::$vt->add('status', '📤 Uploading files...');
+            self::$vt->add('progress', '');
+            self::$vt->add('current_file', '');
+            self::$vt->add('count', '');
+            self::$vt->render();
+            self::$lastRenderTime = microtime(true) * 1000000;
+        }
 
-        return $result->success && str_contains($result->output, 'EXISTS');
+        // Récupérer tous les fichiers du dossier source
+        $files = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($sourceDir, \RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $relativePath = str_replace($sourceDir.'/', '', $file->getPathname());
+                $files[] = [
+                    'local' => $file->getPathname(),
+                    'remote' => $remotePath.'/'.$relativePath,
+                    'relative' => $relativePath,
+                ];
+            }
+        }
+
+        $totalFiles = count($files);
+        $copiedFiles = 0;
+
+        // Upload fichier par fichier via scp
+        foreach ($files as $file) {
+            $remoteDir = dirname($file['remote']);
+            $copiedFiles++;
+
+            // Créer le dossier distant si nécessaire
+            $createDirCmd = "ssh {$sshService->getSshKey()} 'mkdir -p {$remoteDir}'";
+            exec($createDirCmd);
+
+            // Upload du fichier
+            $scpCmd = "scp {$file['local']} {$sshService->getSshKey()}:{$file['remote']}";
+            exec($scpCmd, $output, $returnCode);
+
+            if ($console && self::$vt) {
+                $percentage = $totalFiles > 0 ? round(($copiedFiles / $totalFiles) * 100, 1) : 0;
+                $bar = self::buildProgressBar($copiedFiles, $totalFiles);
+                self::$vt->update('progress', $bar);
+                self::$vt->update('current_file', "   📤 {$file['relative']}");
+                self::$vt->update('count', "   📊 {$copiedFiles}/{$totalFiles} ({$percentage}%)");
+                self::renderWithThrottle();
+            }
+
+            if ($returnCode !== 0) {
+                if ($console) {
+                    echo Logger::error("❌ Failed to upload: {$file['relative']}")."\n";
+                }
+
+                return false;
+            }
+        }
+
+        if ($console && self::$vt) {
+            $bar = self::buildProgressBar($totalFiles, $totalFiles);
+            self::$vt->update('progress', $bar);
+            self::$vt->update('current_file', '');
+            self::$vt->update('count', "   ✅ {$totalFiles} files uploaded");
+            self::$vt->render();
+        }
+
+        return true;
+    }
+
+    private static function buildProgressBar(int $current, int $total): string
+    {
+        $percentage = $total > 0 ? ($current / $total) * 100 : 0;
+        $filled = (int) round(self::BAR_WIDTH * ($current / max($total, 1)));
+
+        return '['.
+            str_repeat(self::COMPLETE_CHAR, $filled).
+            str_repeat(self::EMPTY_CHAR, self::BAR_WIDTH - $filled).
+            '] '.number_format($percentage, 0).'%';
+    }
+
+    private static function renderWithThrottle(): void
+    {
+        if (! self::$vt) {
+            return;
+        }
+
+        $now = microtime(true) * 1000000;
+        if ($now - self::$lastRenderTime >= self::RENDER_INTERVAL) {
+            self::$vt->render();
+            self::$lastRenderTime = $now;
+        }
+    }
+
+    private static function createRemoteDirectory(SshService $sshService, string $remotePath, ?Console $console): void
+    {
+        if ($console) {
+            echo Logger::info('📁 Creating remote directory: '.$remotePath)."\n";
+        }
+
+        $command = "ssh {$sshService->getSshKey()} 'mkdir -p {$remotePath}'";
+        exec($command, $output, $returnCode);
+
+        if ($returnCode === 0) {
+            if ($console) {
+                echo Logger::success('✅ Remote directory created')."\n";
+                echo "\n";
+            }
+        } else {
+            if ($console) {
+                echo Logger::warning('⚠️  Could not create remote directory, continuing...')."\n";
+                echo "\n";
+            }
+        }
+    }
+
+    private static function cleanTemporaryFiles(SshService $sshService, string $remotePath, ?Console $console): void
+    {
+        if ($console) {
+            echo Logger::info('🧹 Cleaning temporary files on server...')."\n";
+        }
+
+        $commands = [
+            "ssh {$sshService->getSshKey()} 'find {$remotePath} -name \".*.IfdBOl\" -delete 2>/dev/null || true'",
+            "ssh {$sshService->getSshKey()} 'find {$remotePath} -name \"*.tmp\" -delete 2>/dev/null || true'",
+        ];
+
+        foreach ($commands as $command) {
+            exec($command);
+        }
+
+        if ($console) {
+            echo Logger::success('✅ Temporary files cleaned')."\n";
+            echo "\n";
+        }
+    }
+
+    private static function countFilesInDirectory(FileSystemService $fileSystem, string $directory): int
+    {
+        $count = 0;
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($directory, \RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    private static function copyDirectory(FileSystemService $fileSystem, string $source, string $destination): bool
+    {
+        if (! is_dir($source)) {
+            return false;
+        }
+
+        $fileSystem->ensureDirectoryExists($destination);
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($source, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            /** @var \SplFileInfo $item */
+            $relativePath = str_replace($source.'/', '', $item->getPathname());
+            $targetPath = $destination.'/'.$relativePath;
+
+            if ($item->isDir()) {
+                $fileSystem->ensureDirectoryExists($targetPath);
+            } else {
+                $fileSystem->ensureDirectoryExists(dirname($targetPath));
+                $fileSystem->copy($item->getPathname(), $targetPath);
+            }
+        }
+
+        return true;
+    }
+
+    private static function mergeDirectory(FileSystemService $fileSystem, string $source, string $destination): void
+    {
+        if (! is_dir($source)) {
+            return;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($source, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            /** @var \SplFileInfo $item */
+            $relativePath = str_replace($source.'/', '', $item->getPathname());
+            $targetPath = $destination.'/'.$relativePath;
+
+            if ($item->isDir()) {
+                $fileSystem->ensureDirectoryExists($targetPath);
+            } else {
+                $fileSystem->ensureDirectoryExists(dirname($targetPath));
+                $fileSystem->copy($item->getPathname(), $targetPath);
+            }
+        }
+    }
+
+    private static function getDirectorySize(FileSystemService $fileSystem, string $path): int
+    {
+        if (! $fileSystem->exists($path)) {
+            return 0;
+        }
+
+        if ($fileSystem->isFile($path)) {
+            return $fileSystem->size($path);
+        }
+
+        $totalSize = 0;
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $totalSize += $file->getSize();
+            }
+        }
+
+        return $totalSize;
     }
 }

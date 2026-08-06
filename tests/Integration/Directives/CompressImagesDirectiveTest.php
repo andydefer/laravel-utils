@@ -117,7 +117,6 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_images_successfully(): void
     {
-        // Arrange
         $this->createTestImage('image1.jpg', 800, 600, 'jpg');
         $this->createTestImage('image2.jpg', 800, 600, 'jpg');
         $this->createTestImage('image3.png', 800, 600, 'png');
@@ -125,10 +124,8 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act
         $response = $this->service->run("images:compress {$source} {$destination} --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📷 Starting image compression...', $response->output);
         $this->assertStringContainsString('📁 Found 3 images to process', $response->output);
@@ -141,17 +138,14 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_with_destination(): void
     {
-        // Arrange
         $this->createTestImage('image1.jpg', 800, 600, 'jpg');
         $this->createTestImage('image2.png', 800, 600, 'png');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act
         $response = $this->service->run("images:compress {$source} {$destination} --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📷 Starting image compression...', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -162,7 +156,6 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_with_subdirectories(): void
     {
-        // Arrange
         $this->createTestImage('root.jpg', 800, 600, 'jpg');
         $this->createTestImage('subdir/image1.jpg', 800, 600, 'jpg');
         $this->createTestImage('subdir/image2.png', 800, 600, 'png');
@@ -170,10 +163,8 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act
         $response = $this->service->run("images:compress {$source} {$destination} --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📁 Found 3 images to process', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -185,7 +176,6 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_with_deep_subdirectories(): void
     {
-        // Arrange
         $this->createTestImage('root.jpg', 800, 600, 'jpg');
         $this->createTestImage('level1/image1.jpg', 800, 600, 'jpg');
         $this->createTestImage('level1/level2/image2.png', 800, 600, 'png');
@@ -193,10 +183,8 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act
         $response = $this->service->run("images:compress {$source} {$destination} --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📁 Found 3 images to process', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -208,16 +196,13 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_with_custom_png_quality(): void
     {
-        // Arrange
         $this->createTestImage('image.png', 800, 600, 'png');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act - Les arguments sont positionnels: {source} {destination} {png-quality} {jpg-quality} {max-size}
         $response = $this->service->run("images:compress {$source} {$destination} 45-50 50 --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📷 Starting image compression...', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -227,16 +212,13 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_with_custom_jpg_quality(): void
     {
-        // Arrange
         $this->createTestImage('image.jpg', 800, 600, 'jpg');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act - Les arguments sont positionnels: {source} {destination} {png-quality} {jpg-quality} {max-size}
         $response = $this->service->run("images:compress {$source} {$destination} 45-50 40 --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📷 Starting image compression...', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -246,17 +228,14 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_dry_run(): void
     {
-        // Arrange
         $this->createTestImage('image1.jpg', 800, 600, 'jpg');
         $this->createTestImage('image2.png', 800, 600, 'png');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act
         $response = $this->service->run("images:compress {$source} {$destination} --recursive --dry-run");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📋 DRY RUN - No changes will be made', $response->output);
         $this->assertStringContainsString('📋 Images to compress:', $response->output);
@@ -268,16 +247,13 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_with_strip_meta(): void
     {
-        // Arrange
         $this->createTestImage('image.jpg', 800, 600, 'jpg');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act
         $response = $this->service->run("images:compress {$source} {$destination} --recursive --strip-meta");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📷 Starting image compression...', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -287,16 +263,13 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_with_force(): void
     {
-        // Arrange
         $this->createTestImage('image.jpg', 800, 600, 'jpg');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act
         $response = $this->service->run("images:compress {$source} {$destination} --recursive --force");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📷 Starting image compression...', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -306,17 +279,14 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_shows_summary(): void
     {
-        // Arrange
         $this->createTestImage('image1.jpg', 800, 600, 'jpg');
         $this->createTestImage('image2.png', 800, 600, 'png');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act
         $response = $this->service->run("images:compress {$source} {$destination} --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📊 Summary:', $response->output);
         $this->assertStringContainsString('📁 Files processed:', $response->output);
@@ -327,26 +297,21 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_with_invalid_source(): void
     {
-        // Act
         $response = $this->service->run('images:compress invalid/path');
 
-        // Assert
         $this->assertSame(ExitCode::RUNTIME_ERROR, $response->exit_code);
         $this->assertStringContainsString('Source not found', $response->output);
     }
 
     public function test_compress_with_no_images(): void
     {
-        // Arrange
         $emptyDir = $this->testDirectory.'/empty';
         $this->fileSystem->ensureDirectoryExists($emptyDir);
 
         $source = 'storage/app/public/images/test/empty';
 
-        // Act
         $response = $this->service->run("images:compress {$source} {$source}/output");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('⚠️ No images found to compress', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -354,7 +319,6 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_large_number_of_images(): void
     {
-        // Arrange
         for ($i = 0; $i < 10; $i++) {
             $this->createTestImage("image_{$i}.jpg", 800, 600, 'jpg');
         }
@@ -362,12 +326,10 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act
         $start = microtime(true);
         $response = $this->service->run("images:compress {$source} {$destination} --recursive");
         $duration = microtime(true) - $start;
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📁 Found 10 images to process', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -376,7 +338,6 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_jpg_images(): void
     {
-        // Arrange
         $this->createTestImage('image1.jpg', 800, 600, 'jpg');
         $this->createTestImage('image2.jpg', 800, 600, 'jpg');
         $this->createTestImage('image3.jpg', 800, 600, 'jpg');
@@ -384,10 +345,8 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act - Les arguments sont positionnels: {source} {destination} {png-quality} {jpg-quality} {max-size}
         $response = $this->service->run("images:compress {$source} {$destination} 45-50 45 --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📁 Found 3 images to process', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -395,17 +354,14 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_png_images(): void
     {
-        // Arrange
         $this->createTestImage('image1.png', 800, 600, 'png');
         $this->createTestImage('image2.png', 800, 600, 'png');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act - Les arguments sont positionnels: {source} {destination} {png-quality} {jpg-quality} {max-size}
         $response = $this->service->run("images:compress {$source} {$destination} 30-40 50 --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📁 Found 2 images to process', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -413,7 +369,6 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_mixed_formats(): void
     {
-        // Arrange
         $this->createTestImage('image1.jpg', 800, 600, 'jpg');
         $this->createTestImage('image2.jpeg', 800, 600, 'jpeg');
         $this->createTestImage('image3.png', 800, 600, 'png');
@@ -421,10 +376,8 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act
         $response = $this->service->run("images:compress {$source} {$destination} --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📁 Found 3 images to process', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -432,16 +385,13 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_alias_works(): void
     {
-        // Arrange
         $this->createTestImage('image.jpg', 800, 600, 'jpg');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act
         $response = $this->service->run("imc {$source} {$destination} --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📷 Starting image compression...', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -449,34 +399,33 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_skip_images_smaller_than_max_size(): void
     {
-        // Arrange
         $this->createTestImage('small.jpg', 50, 50, 'jpg');
         $this->createTestImage('large.jpg', 800, 600, 'jpg');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act - Les arguments sont positionnels: {source} {destination} {png-quality} {jpg-quality} {max-size}
         $response = $this->service->run("images:compress {$source} {$destination} 45-50 50 20 --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📁 Found 2 images to process', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
+
+        // ✅ Vérifier via le contexte que l'image small a été skip
+        $context = $this->service->getKernel()->getContext();
+        $this->assertSame(1, $context['processed_count'] ?? 0);
+        $this->assertSame(1, $context['skipped_count'] ?? 0);
     }
 
     public function test_compress_with_max_size_zero(): void
     {
-        // Arrange
         $this->createTestImage('small.jpg', 50, 50, 'jpg');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act - Les arguments sont positionnels: {source} {destination} {png-quality} {jpg-quality} {max-size}
         $response = $this->service->run("images:compress {$source} {$destination} 45-50 50 0 --recursive");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📁 Found 1 images to process', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -484,51 +433,55 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_skip_already_compressed_images(): void
     {
-        // Arrange
         $this->createTestImage('image1.jpg', 800, 600, 'jpg');
         $this->createTestImage('image2.png', 800, 600, 'png');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act: Première compression
+        // Première compression
         $response1 = $this->service->run("images:compress {$source} {$destination} --recursive");
         $this->assertSame(ExitCode::SUCCESS, $response1->exit_code);
 
-        // Act: Deuxième compression avec skip-compressed
+        // Deuxième compression avec skip-compressed
         $response2 = $this->service->run("images:compress {$source} {$destination} --recursive --skip-compressed");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response2->exit_code);
         $this->assertStringContainsString('📁 Found 2 images to process', $response2->output);
-        $this->assertStringContainsString('already compressed, skipping', $response2->output);
         $this->assertStringContainsString('✅ Compression completed', $response2->output);
+
+        // ✅ Vérifier via le contexte que les 2 images ont été skip
+        $context = $this->service->getKernel()->getContext();
+        $this->assertSame(0, $context['processed_count'] ?? 0);
+        $this->assertSame(2, $context['skipped_count'] ?? 0);
     }
 
-    public function test_compress_with_skip_compressed_and_force(): void
+    public function test_compress_with_skip_compressed_only(): void
     {
-        // Arrange
         $this->createTestImage('image.jpg', 800, 600, 'jpg');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act: Première compression
+        // Première compression
         $response1 = $this->service->run("images:compress {$source} {$destination} --recursive");
         $this->assertSame(ExitCode::SUCCESS, $response1->exit_code);
 
-        // Act: Deuxième compression avec skip-compressed et force
-        $response2 = $this->service->run("images:compress {$source} {$destination} --recursive --force --skip-compressed");
+        // Deuxième compression avec skip-compressed
+        $response2 = $this->service->run("images:compress {$source} {$destination} --recursive --skip-compressed");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response2->exit_code);
         $this->assertStringContainsString('📁 Found 1 images to process', $response2->output);
         $this->assertStringContainsString('✅ Compression completed', $response2->output);
+
+        // ✅ Vérifier que l'image a été skip
+        $context = $this->service->getKernel()->getContext();
+        $this->assertSame(0, $context['processed_count'] ?? 0);
+        $this->assertSame(1, $context['skipped_count'] ?? 0);
     }
 
     public function test_compress_with_max_size_and_skip_compressed(): void
     {
-        // Arrange
         $this->createTestImage('small.jpg', 50, 50, 'jpg');
         $this->createTestImage('large.jpg', 800, 600, 'jpg');
         $this->createTestImage('image.png', 800, 600, 'png');
@@ -536,23 +489,23 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act: Première compression
         $response1 = $this->service->run("images:compress {$source} {$destination} --recursive");
         $this->assertSame(ExitCode::SUCCESS, $response1->exit_code);
 
-        // Act: Deuxième compression avec skip-compressed
         $response2 = $this->service->run("images:compress {$source} {$destination} --recursive --skip-compressed");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response2->exit_code);
         $this->assertStringContainsString('📁 Found 3 images to process', $response2->output);
-        $this->assertStringContainsString('already compressed, skipping', $response2->output);
         $this->assertStringContainsString('✅ Compression completed', $response2->output);
+
+        // ✅ Vérifier via le contexte que les 3 images ont été skip
+        $context = $this->service->getKernel()->getContext();
+        $this->assertSame(0, $context['processed_count'] ?? 0);
+        $this->assertSame(3, $context['skipped_count'] ?? 0);
     }
 
     public function test_compress_with_all_flags(): void
     {
-        // Arrange
         $this->createTestImage('image1.jpg', 800, 600, 'jpg');
         $this->createTestImage('image2.png', 800, 600, 'png');
         $this->createTestImage('small.jpg', 50, 50, 'jpg');
@@ -564,11 +517,9 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
             $this->fileSystem->deleteDirectory($destination);
         }
 
-        // Act - Flags dans l'ordre: --recursive --strip-meta --force
         $command = "images:compress {$source} {$destination} --recursive --strip-meta --force";
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📷 Starting image compression...', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);
@@ -587,17 +538,14 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_dry_run_with_skip_compressed(): void
     {
-        // Arrange
         $this->createTestImage('image1.jpg', 800, 600, 'jpg');
         $this->createTestImage('image2.png', 800, 600, 'png');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act - Flags dans l'ordre: --recursive --dry-run --skip-compressed
         $response = $this->service->run("images:compress {$source} {$destination} --recursive --dry-run --skip-compressed");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📋 DRY RUN - No changes will be made', $response->output);
         $this->assertStringContainsString('📋 Images to compress:', $response->output);
@@ -606,16 +554,13 @@ final class CompressImagesDirectiveTest extends IntegrationTestCase
 
     public function test_compress_alias_with_flags(): void
     {
-        // Arrange
         $this->createTestImage('image.jpg', 800, 600, 'jpg');
 
         $source = 'storage/app/public/images/test';
         $destination = 'storage/app/public/images/compressed';
 
-        // Act - Flags dans l'ordre: --recursive --skip-compressed
         $response = $this->service->run("imc {$source} {$destination} --recursive --skip-compressed");
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📷 Starting image compression...', $response->output);
         $this->assertStringContainsString('✅ Compression completed', $response->output);

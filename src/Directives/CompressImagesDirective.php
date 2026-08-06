@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AndyDefer\LaravelUtils\Directives;
 
+use AndyDefer\ConsoleWriter\Console\Console;
+use AndyDefer\ConsoleWriter\Console\Services\VirtualTerminalService;
 use AndyDefer\Directive\AbstractDirective;
 use AndyDefer\Directive\Enums\ExitCode;
 use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
@@ -40,7 +42,21 @@ final class CompressImagesDirective extends AbstractDirective
 
     private const PNG_METADATA_RATIO_UNCOMPRESSED = 0.30;
 
+    private const BAR_WIDTH = 40;
+
+    private const COMPLETE_CHAR = '█';
+
+    private const EMPTY_CHAR = '░';
+
+    private const RENDER_INTERVAL = 300000; // 300ms
+
+    private static float $lastRenderTime = 0;
+
+    private static ?VirtualTerminalService $vt = null;
+
     private FileSystemInterface $fileSystem;
+
+    private Console $console;
 
     public function getSignature(): string
     {
@@ -69,6 +85,10 @@ final class CompressImagesDirective extends AbstractDirective
 
     protected function beforeExecute(): void
     {
+        $this->console = new Console;
+        self::$vt = new VirtualTerminalService($this->console->getAnsiConverter());
+        self::$lastRenderTime = 0;
+
         $this->info('📷 Starting image compression...');
         $this->newLine();
 
@@ -198,13 +218,88 @@ final class CompressImagesDirective extends AbstractDirective
 
     private function processImages(Collection $files, array $config): void
     {
+        $totalFiles = $files->count();
+        $currentFile = 0;
+        $processedCount = 0;
+        $skippedCount = 0;
+
+        $this->console->line();
+
+        if (self::$vt) {
+            self::$vt->clear();
+            self::$vt->add('status', '📦 Compressing images...');
+            self::$vt->add('progress', '');
+            self::$vt->add('current_file', '');
+            self::$vt->add('count', '');
+            self::$vt->render();
+            self::$lastRenderTime = microtime(true) * 1000000;
+        }
+
         foreach ($files as $file) {
+            $currentFile++;
+            $relativePath = FileFinderUtility::getRelativePath($file, $config['source']);
+            $relativePath = str_replace($config['source'].'/', '', $relativePath);
+
+            if (self::$vt) {
+                $percentage = $totalFiles > 0 ? round(($currentFile / $totalFiles) * 100, 1) : 0;
+                $bar = $this->buildProgressBar($currentFile, $totalFiles);
+                self::$vt->update('progress', $bar);
+                self::$vt->update('current_file', "   📤 {$relativePath}");
+                self::$vt->update('count', "   📊 {$currentFile}/{$totalFiles} ({$percentage}%)");
+                $this->renderWithThrottle();
+            }
+
             if ($this->shouldSkipImage($file, $config)) {
+                $skippedCount++;
+                if (self::$vt) {
+                    self::$vt->update('current_file', "   ⏭️  Skipping: {$relativePath}");
+                    $this->renderWithThrottle();
+                }
+
                 continue;
             }
 
+            $processedCount++;
             $this->compressSingleImage($file, $config);
         }
+
+        // ✅ Mettre à jour le contexte via contextSet (écrit dans le kernel)
+        $this->contextSet('processed_count', $processedCount);
+        $this->contextSet('skipped_count', $skippedCount);
+
+        if (self::$vt) {
+            $bar = $this->buildProgressBar($totalFiles, $totalFiles);
+            self::$vt->update('progress', $bar);
+            self::$vt->update('current_file', '');
+            self::$vt->update('count', "   ✅ {$processedCount} files processed");
+            self::$vt->render();
+        }
+
+        $this->console->line();
+    }
+
+    private function renderWithThrottle(): void
+    {
+        if (! self::$vt) {
+            return;
+        }
+
+        $now = microtime(true) * 1000000;
+        if ($now - self::$lastRenderTime >= self::RENDER_INTERVAL) {
+            self::$vt->render();
+            self::$lastRenderTime = $now;
+        }
+    }
+
+    private function buildProgressBar(int $current, int $total): string
+    {
+        $percentage = $total > 0 ? ($current / $total) * 100 : 0;
+        $filled = (int) round(self::BAR_WIDTH * ($current / max($total, 1)));
+
+        return '['.
+            str_repeat(self::COMPLETE_CHAR, $filled).
+            str_repeat(self::EMPTY_CHAR, self::BAR_WIDTH - $filled).
+            '] '.number_format($percentage, 0).'%';
     }
 
     private function shouldSkipImage(string $file, array $config): bool
@@ -228,9 +323,6 @@ final class CompressImagesDirective extends AbstractDirective
             return false;
         }
 
-        $relative = FileFinderUtility::getRelativePath($file, $config['source']);
-        $this->line("   ⏭️  {$relative} - skipped (size < ".FileSizeUnit::format($config['maxSize']).')');
-
         return true;
     }
 
@@ -240,14 +332,7 @@ final class CompressImagesDirective extends AbstractDirective
             return false;
         }
 
-        if (! $this->isImageAlreadyCompressed($file)) {
-            return false;
-        }
-
-        $relative = FileFinderUtility::getRelativePath($file, $config['source']);
-        $this->line("   ⏭️  {$relative} - already compressed, skipping");
-
-        return true;
+        return $this->isImageAlreadyCompressed($file);
     }
 
     private function isImageAlreadyCompressed(string $filePath): bool
@@ -298,6 +383,7 @@ final class CompressImagesDirective extends AbstractDirective
     {
         $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
         $relativePath = FileFinderUtility::getRelativePath($file, $config['source']);
+        $relativePath = str_replace($config['source'].'/', '', $relativePath);
 
         $destinationPath = $config['destination'].'/'.$relativePath;
         $destinationDir = dirname($destinationPath);
@@ -422,20 +508,6 @@ final class CompressImagesDirective extends AbstractDirective
         $this->contextSet('processed_count', $this->contextGet('processed_count') + 1);
         $this->contextSet('total_size_before', $this->contextGet('total_size_before') + $fileSizeBefore);
         $this->contextSet('total_size_after', $this->contextGet('total_size_after') + $fileSizeAfter);
-
-        $this->logCompressionResult($relativePath, $fileSizeBefore, $fileSizeAfter);
-    }
-
-    private function logCompressionResult(string $relativePath, int $sizeBefore, int $sizeAfter): void
-    {
-        $saved = $sizeBefore - $sizeAfter;
-        $savedPercent = $sizeBefore > 0 ? round(($saved / $sizeBefore) * 100, 1) : 0;
-
-        if ($saved > 0) {
-            $this->info("   ✅ {$relativePath} - saved ".FileSizeUnit::format($saved)." ({$savedPercent}%)");
-        } else {
-            $this->line("   ⏭️  {$relativePath} - no size reduction");
-        }
     }
 
     private function displaySummary(): void
