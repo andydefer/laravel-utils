@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace AndyDefer\LaravelUtils\Directives;
 
+use AndyDefer\ConsoleWriter\Console\Components\KeyValue;
+use AndyDefer\ConsoleWriter\Console\Components\Logger;
+use AndyDefer\ConsoleWriter\Console\Console;
 use AndyDefer\Directive\AbstractDirective;
 use AndyDefer\Directive\Enums\ExitCode;
 use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
+use AndyDefer\DomainStructures\Utils\MapCollection;
 use AndyDefer\LaravelUtils\Enums\FileSizeUnit;
 use AndyDefer\LaravelUtils\Enums\VideoExtension;
 use AndyDefer\LaravelUtils\Utilities\FileFinderUtility;
@@ -44,6 +48,8 @@ final class CompressVideosDirective extends AbstractDirective
 
     private FileSystemInterface $fileSystem;
 
+    private Console $console;
+
     public function getSignature(): string
     {
         return 'videos:compress 
@@ -73,6 +79,7 @@ final class CompressVideosDirective extends AbstractDirective
 
     protected function beforeExecute(): void
     {
+        $this->console = new Console;
         $this->info('🎬 Starting video compression...');
         $this->newLine();
 
@@ -215,8 +222,21 @@ final class CompressVideosDirective extends AbstractDirective
 
     private function processVideos(Collection $files, array $config): void
     {
+        $totalVideos = $files->count();
+        $currentVideo = 0;
+
         foreach ($files as $file) {
+            $currentVideo++;
+            $relativePath = FileFinderUtility::getRelativePath($file, $config['source']);
+
+            // Log avant de commencer la compression
+            echo Logger::info("🎬 Processing video {$currentVideo}/{$totalVideos}: {$relativePath}")."\n";
+
             $this->processSingleVideo($file, $config);
+
+            // Log après la compression
+            echo Logger::success("✅ Completed video {$currentVideo}/{$totalVideos}: {$relativePath}")."\n";
+            echo Logger::info('   ───────────────────────────────────────────────')."\n";
         }
     }
 
@@ -227,10 +247,13 @@ final class CompressVideosDirective extends AbstractDirective
         $extension = pathinfo($file, PATHINFO_EXTENSION);
 
         $destinationBase = rtrim($config['destination'], '/');
-        $outputFile = $destinationBase.'/'.$baseName.'_compressed.'.$extension;
+        $destinationSubDir = dirname($relativePath);
 
-        $this->info("🎬 Processing: {$relativePath}");
-        $this->line("   📁 Output: {$outputFile}");
+        $outputFile = $destinationBase;
+        if ($destinationSubDir !== '.' && $destinationSubDir !== '/') {
+            $outputFile .= '/'.$destinationSubDir;
+        }
+        $outputFile .= '/'.$baseName.'_compressed.'.$extension;
 
         if ($this->fileSystem->exists($outputFile) && ! $config['force']) {
             $this->getConsole()->alertWarning('   ⏭️  Output already exists, use --force to overwrite');
@@ -251,6 +274,7 @@ final class CompressVideosDirective extends AbstractDirective
             $this->contextSet('processed_count', $this->contextGet('processed_count') + 1);
             $this->contextSet('total_size_before', $this->contextGet('total_size_before') + $fileSizeBefore);
             $this->contextSet('total_size_after', $this->contextGet('total_size_after') + $fileSizeAfter);
+
             $this->logCompressionResult($relativePath, $fileSizeBefore, $fileSizeAfter);
         } else {
             $this->contextSet('failed_count', $this->contextGet('failed_count') + 1);
@@ -303,10 +327,17 @@ final class CompressVideosDirective extends AbstractDirective
         $saved = $sizeBefore - $sizeAfter;
         $savedPercent = $sizeBefore > 0 ? round(($saved / $sizeBefore) * 100, 1) : 0;
 
+        $data = MapCollection::from([
+            'File' => $relativePath,
+            'Before' => FileSizeUnit::format($sizeBefore),
+            'After' => FileSizeUnit::format($sizeAfter),
+            'Saved' => FileSizeUnit::format($saved).' ('.$savedPercent.'%)',
+        ]);
+
         if ($saved > 0) {
-            $this->info("   ✅ {$relativePath} - saved ".FileSizeUnit::format($saved)." ({$savedPercent}%)");
+            $this->console->raw(KeyValue::renderWithValueColor($data, 'green'));
         } else {
-            $this->line("   ⏭️  {$relativePath} - no size reduction");
+            $this->console->raw(KeyValue::renderWithValueColor($data, 'yellow'));
         }
     }
 
@@ -322,18 +353,17 @@ final class CompressVideosDirective extends AbstractDirective
 
         $this->newLine();
         $this->line('📊 Summary:');
-        $this->line("   📁 Videos processed: {$processedCount}");
 
-        if ($skippedCount > 0) {
-            $this->line("   ⏭️  Videos skipped: {$skippedCount}");
-        }
+        $summary = MapCollection::from([
+            'Videos processed' => $processedCount,
+            'Videos skipped' => $skippedCount,
+            'Videos failed' => $failedCount,
+            'Size before' => FileSizeUnit::format($sizeBefore),
+            'Size after' => FileSizeUnit::format($sizeAfter),
+            'Space saved' => FileSizeUnit::format($saved).' ('.$savedPercent.'%)',
+        ]);
 
-        if ($failedCount > 0) {
-            $this->line("   ❌ Videos failed: {$failedCount}");
-        }
-
-        $this->line('   📦 Size before: '.FileSizeUnit::format($sizeBefore));
-        $this->line('   📦 Size after: '.FileSizeUnit::format($sizeAfter));
-        $this->line('   💾 Space saved: '.FileSizeUnit::format($saved)." ({$savedPercent}%)");
+        $this->console->raw(KeyValue::renderWithValueColor($summary, 'yellow'));
+        $this->newLine();
     }
 }

@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace AndyDefer\LaravelUtils\Directives;
 
+use AndyDefer\ConsoleWriter\Console\Components\KeyValue;
+use AndyDefer\ConsoleWriter\Console\Console;
 use AndyDefer\Directive\AbstractDirective;
 use AndyDefer\Directive\Enums\ExitCode;
 use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
+use AndyDefer\DomainStructures\Utils\MapCollection;
 use AndyDefer\LaravelUtils\Enums\FileSizeUnit;
+use AndyDefer\LaravelUtils\Enums\VideoExtension;
 use AndyDefer\LaravelUtils\Enums\VideoResolution;
 use AndyDefer\LaravelUtils\Utilities\FileFinderUtility;
 use AndyDefer\PhpServices\Contracts\FileSystemInterface;
@@ -38,9 +42,9 @@ final class GenerateHlsDirective extends AbstractDirective
 
     private const DEFAULT_AUDIO_BITRATE = '128k';
 
-    private const VIDEO_EXTENSIONS = ['mp4'];
-
     private FileSystemInterface $fileSystem;
+
+    private Console $console;
 
     public function getSignature(): string
     {
@@ -68,6 +72,7 @@ final class GenerateHlsDirective extends AbstractDirective
 
     protected function beforeExecute(): void
     {
+        $this->console = new Console;
         $this->info('🎬 Starting HLS generation...');
         $this->newLine();
 
@@ -84,18 +89,18 @@ final class GenerateHlsDirective extends AbstractDirective
 
         $files = FileFinderUtility::findVideos(
             $config['source'],
-            self::VIDEO_EXTENSIONS,
+            VideoExtension::values(),
             $this->fileSystem
         );
 
         if ($files->isEmpty()) {
-            $this->getConsole()->alertWarning('⚠️ No MP4 videos found to process');
+            $this->console->alertWarning('⚠️ No MP4 videos found to process');
 
             return ExitCode::SUCCESS;
         }
 
-        $this->info('📁 Found '.$files->count().' videos to process');
-        $this->newLine();
+        $this->console->info('📁 Found '.$files->count().' videos to process');
+        $this->console->newLine();
 
         if ($config['dryRun']) {
             $this->performDryRun($files, $config);
@@ -111,11 +116,11 @@ final class GenerateHlsDirective extends AbstractDirective
 
     protected function afterExecute(ExitCode $exitCode): void
     {
-        $this->newLine();
+        $this->console->newLine();
         if ($exitCode->isSuccess()) {
-            $this->info('✅ HLS generation completed');
+            $this->console->info('✅ HLS generation completed');
         } else {
-            $this->error('❌ HLS generation failed');
+            $this->console->error('❌ HLS generation failed');
         }
     }
 
@@ -134,9 +139,9 @@ final class GenerateHlsDirective extends AbstractDirective
             return;
         }
 
-        $this->error('❌ Required tools not installed: '.implode(', ', $missing));
-        $this->line('📦 Install them with:');
-        $this->line('   sudo apt install ffmpeg');
+        $this->console->error('❌ Required tools not installed: '.implode(', ', $missing));
+        $this->console->line('📦 Install them with:');
+        $this->console->line('   sudo apt install ffmpeg');
 
         throw new RuntimeException('Missing dependencies: '.implode(', ', $missing));
     }
@@ -193,11 +198,11 @@ final class GenerateHlsDirective extends AbstractDirective
 
     private function performDryRun(Collection $files, array $config): void
     {
-        $this->newLine();
-        $this->info('📋 DRY RUN - No changes will be made');
-        $this->newLine();
-        $this->line('📋 Videos to process:');
-        $this->newLine();
+        $this->console->newLine();
+        $this->console->info('📋 DRY RUN - No changes will be made');
+        $this->console->newLine();
+        $this->console->line('📋 Videos to process:');
+        $this->console->newLine();
 
         $totalSize = 0;
 
@@ -206,61 +211,82 @@ final class GenerateHlsDirective extends AbstractDirective
             $totalSize += $size;
             $relative = FileFinderUtility::getRelativePath($file, $config['source']);
             $resolutions = implode(',', $config['resolutions']);
-            $this->line("   • {$relative} (".FileSizeUnit::format($size).") → HLS with resolutions: {$resolutions}");
+            $this->console->line("   • {$relative} (".FileSizeUnit::format($size).") → HLS with resolutions: {$resolutions}");
         }
 
-        $this->newLine();
-        $this->line('📊 Total: '.$files->count().' videos, '.FileSizeUnit::format($totalSize));
+        $this->console->newLine();
+        $this->console->line('📊 Total: '.$files->count().' videos, '.FileSizeUnit::format($totalSize));
     }
 
     private function processVideos(Collection $files, array $config): void
     {
+        $totalVideos = $files->count();
+        $currentVideo = 0;
+
         foreach ($files as $file) {
-            $this->processSingleVideo($file, $config);
-        }
-    }
+            $currentVideo++;
+            $relativePath = FileFinderUtility::getRelativePath($file, $config['source']);
+            $baseName = pathinfo($file, PATHINFO_FILENAME);
 
-    private function processSingleVideo(string $file, array $config): void
-    {
-        $relativePath = FileFinderUtility::getRelativePath($file, $config['source']);
-        $baseName = pathinfo($file, PATHINFO_FILENAME);
+            $this->console->logInfo("🎬 Processing video {$currentVideo}/{$totalVideos}: {$relativePath}");
 
-        $destinationBase = rtrim($config['destination'], '/');
-        $outputDir = $destinationBase.'/'.$baseName;
+            if ($config['dryRun']) {
+                $this->console->logWarning("🔍 DRY RUN: Would generate HLS for: {$relativePath}");
+                $this->console->logInfo('   ───────────────────────────────────────────────');
 
-        $this->info("🎬 Processing: {$relativePath}");
-        $this->line("   📁 Output: {$outputDir}");
+                continue;
+            }
 
-        if ($this->fileSystem->exists($outputDir) && ! $config['force']) {
-            $this->getConsole()->alertWarning('   ⏭️  HLS already exists, use --force to overwrite');
-            $this->contextSet('skipped_count', $this->contextGet('skipped_count') + 1);
+            $destinationBase = rtrim($config['destination'], '/');
+            $destinationSubDir = dirname($relativePath);
 
-            return;
-        }
+            $outputDir = $destinationBase;
+            if ($destinationSubDir !== '.' && $destinationSubDir !== '/') {
+                $outputDir .= '/'.$destinationSubDir;
+            }
+            $outputDir .= '/'.$baseName;
 
-        if (! $config['dryRun']) {
-            $this->fileSystem->ensureDirectoryExists($outputDir);
-        }
+            $this->console->line("   📁 Output: {$outputDir}");
 
-        $fileSizeBefore = $this->fileSystem->size($file);
-        $success = $this->generateHls($file, $outputDir, $config);
+            if ($this->fileSystem->exists($outputDir) && ! $config['force']) {
+                $this->console->alertWarning('   ⏭️  HLS already exists, use --force to overwrite');
+                $this->contextSet('skipped_count', $this->contextGet('skipped_count') + 1);
 
-        if ($success) {
-            $fileSizeAfter = $this->calculateHlsSize($outputDir);
-            $this->contextSet('processed_count', $this->contextGet('processed_count') + 1);
-            $this->contextSet('total_size_before', $this->contextGet('total_size_before') + $fileSizeBefore);
-            $this->contextSet('total_size_after', $this->contextGet('total_size_after') + $fileSizeAfter);
-            $this->logHlsResult($relativePath, $fileSizeBefore, $fileSizeAfter);
-        } else {
-            $this->contextSet('failed_count', $this->contextGet('failed_count') + 1);
-            $this->error("   ❌ Failed to generate HLS for: {$relativePath}");
+                $this->console->logWarning("⏭️  Skipped video {$currentVideo}/{$totalVideos}: {$relativePath} (already exists)");
+                $this->console->logInfo('   ───────────────────────────────────────────────');
+
+                continue;
+            }
+
+            if (! $config['dryRun']) {
+                $this->fileSystem->ensureDirectoryExists($outputDir);
+            }
+
+            $fileSizeBefore = $this->fileSystem->size($file);
+            $success = $this->generateHls($file, $outputDir, $config);
+
+            if ($success) {
+                $fileSizeAfter = $this->calculateHlsSize($outputDir);
+                $this->contextSet('processed_count', $this->contextGet('processed_count') + 1);
+                $this->contextSet('total_size_before', $this->contextGet('total_size_before') + $fileSizeBefore);
+                $this->contextSet('total_size_after', $this->contextGet('total_size_after') + $fileSizeAfter);
+
+                $this->logHlsResult($relativePath, $fileSizeBefore, $fileSizeAfter);
+                $this->console->logSuccess("✅ Completed video {$currentVideo}/{$totalVideos}: {$relativePath}");
+            } else {
+                $this->contextSet('failed_count', $this->contextGet('failed_count') + 1);
+                $this->console->error("   ❌ Failed to generate HLS for: {$relativePath}");
+                $this->console->logError("❌ Failed video {$currentVideo}/{$totalVideos}: {$relativePath}");
+            }
+
+            $this->console->logInfo('   ───────────────────────────────────────────────');
         }
     }
 
     private function generateHls(string $source, string $outputDir, array $config): bool
     {
         if ($config['dryRun']) {
-            $this->line("   🔍 DRY RUN: Would generate HLS for: {$source}");
+            $this->console->line("   🔍 DRY RUN: Would generate HLS for: {$source}");
 
             return true;
         }
@@ -304,8 +330,8 @@ final class GenerateHlsDirective extends AbstractDirective
             $process->run();
 
             if (! $process->isSuccessful()) {
-                $this->error("   ❌ Error generating variant for resolution {$resolutionEnum->label()}:");
-                $this->error($process->getErrorOutput());
+                $this->console->error("   ❌ Error generating variant for resolution {$resolutionEnum->label()}:");
+                $this->console->error($process->getErrorOutput());
 
                 return false;
             }
@@ -317,7 +343,7 @@ final class GenerateHlsDirective extends AbstractDirective
                 'playlist' => $resolutionEnum->label().'/playlist.m3u8',
             ];
 
-            $this->line("   ✅ Generated variant for {$resolutionEnum->label()}");
+            $this->console->line("   ✅ Generated variant for {$resolutionEnum->label()}");
         }
 
         $this->generateMasterPlaylist($outputDir, $variantStreams);
@@ -341,7 +367,7 @@ final class GenerateHlsDirective extends AbstractDirective
 
         $masterPath = $outputDir.'/playlist.m3u8';
         $this->fileSystem->put($masterPath, $masterContent);
-        $this->line('   ✅ Master playlist created: playlist.m3u8');
+        $this->console->line('   ✅ Master playlist created: playlist.m3u8');
     }
 
     private function estimateBitrate(string $source, int $resolution): int
@@ -391,10 +417,17 @@ final class GenerateHlsDirective extends AbstractDirective
         $saved = $sizeBefore - $sizeAfter;
         $savedPercent = $sizeBefore > 0 ? round(($saved / $sizeBefore) * 100, 1) : 0;
 
+        $data = MapCollection::from([
+            'File' => $relativePath,
+            'Before' => FileSizeUnit::format($sizeBefore),
+            'After' => FileSizeUnit::format($sizeAfter),
+            'Saved' => FileSizeUnit::format($saved).' ('.$savedPercent.'%)',
+        ]);
+
         if ($saved > 0) {
-            $this->info("   ✅ {$relativePath} - saved ".FileSizeUnit::format($saved)." ({$savedPercent}%)");
+            $this->console->raw(KeyValue::renderWithValueColor($data, 'green'));
         } else {
-            $this->line("   ⏭️  {$relativePath} - no size reduction");
+            $this->console->raw(KeyValue::renderWithValueColor($data, 'yellow'));
         }
     }
 
@@ -408,20 +441,19 @@ final class GenerateHlsDirective extends AbstractDirective
         $saved = $sizeBefore - $sizeAfter;
         $savedPercent = $sizeBefore > 0 ? round(($saved / $sizeBefore) * 100, 1) : 0;
 
-        $this->newLine();
-        $this->line('📊 Summary:');
-        $this->line("   📁 Videos processed: {$processedCount}");
+        $this->console->newLine();
+        $this->console->line('📊 Summary:');
 
-        if ($skippedCount > 0) {
-            $this->line("   ⏭️  Videos skipped: {$skippedCount}");
-        }
+        $summary = MapCollection::from([
+            'Videos processed' => $processedCount,
+            'Videos skipped' => $skippedCount,
+            'Videos failed' => $failedCount,
+            'Size before' => FileSizeUnit::format($sizeBefore),
+            'Size after' => FileSizeUnit::format($sizeAfter),
+            'Space saved' => FileSizeUnit::format($saved).' ('.$savedPercent.'%)',
+        ]);
 
-        if ($failedCount > 0) {
-            $this->line("   ❌ Videos failed: {$failedCount}");
-        }
-
-        $this->line('   📦 Size before: '.FileSizeUnit::format($sizeBefore));
-        $this->line('   📦 Size after: '.FileSizeUnit::format($sizeAfter));
-        $this->line('   💾 Space saved: '.FileSizeUnit::format($saved)." ({$savedPercent}%)");
+        $this->console->raw(KeyValue::renderWithValueColor($summary, 'yellow'));
+        $this->console->newLine();
     }
 }
