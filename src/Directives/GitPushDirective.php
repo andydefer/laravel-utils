@@ -39,9 +39,9 @@ final class GitPushDirective extends AbstractDirective
 
     private VirtualTerminalService $vt;
 
-    private float $lastRenderTime = 0; // ✅ Changé en float
+    private float $lastRenderTime = 0;
 
-    private const RENDER_INTERVAL = 300000; // 300ms en microsecondes
+    private const RENDER_INTERVAL = 600000; // 600ms en microsecondes
 
     public function getSignature(): string
     {
@@ -89,11 +89,17 @@ final class GitPushDirective extends AbstractDirective
 
     private function renderWithThrottle(): void
     {
-        $now = microtime(true) * 1000000; // microsecondes
+        $now = microtime(true) * 1000000;
         if ($now - $this->lastRenderTime >= self::RENDER_INTERVAL) {
             $this->vt->render();
             $this->lastRenderTime = $now;
         }
+    }
+
+    private function renderFinal(): void
+    {
+        $this->vt->render();
+        $this->lastRenderTime = microtime(true) * 1000000;
     }
 
     protected function execute(): ExitCode
@@ -325,21 +331,15 @@ final class GitPushDirective extends AbstractDirective
         $lines = explode("\n", $testList);
         foreach ($lines as $line) {
             if (str_contains($line, ' - ')) {
-                // Extraire la partie après " - "
                 $parts = explode(' - ', $line);
                 if (count($parts) >= 2) {
                     $testPath = $parts[1];
-                    // Exploder par "::" pour séparer la classe et la méthode
                     $testParts = explode('::', $testPath);
                     if (count($testParts) >= 2) {
                         $className = $testParts[0];
-                        $methodName = $testParts[1];
-                        // Remplacer les _ par des espaces
-                        $methodName = str_replace('_', ' ', $methodName);
-                        // Extraire le nom court de la classe (sans le namespace complet)
                         $classParts = explode('\\', $className);
                         $shortClassName = end($classParts);
-                        $testNames[] = $shortClassName.' → '.$methodName;
+                        $testNames[] = $shortClassName;
                     }
                 }
             }
@@ -404,7 +404,7 @@ final class GitPushDirective extends AbstractDirective
         } else {
             $this->vt->update('status', '❌ Tests failed at: '.$this->currentTestName);
         }
-        $this->vt->render();
+        $this->renderFinal();
 
         if ($this->isVerbose) {
             if ($process->getOutput()) {
