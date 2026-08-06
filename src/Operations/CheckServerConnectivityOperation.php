@@ -46,26 +46,61 @@ final class CheckServerConnectivityOperation
             $console->line();
         }
 
-        // ✅ Copier .env.production local vers le serveur si présent
+        // ✅ Vérifier et copier .env.production local vers le serveur si différent
         $localEnvProduction = getcwd().'/.env.production';
+        $remoteEnvProduction = "{$remotePath}/.env.production";
+
         if (file_exists($localEnvProduction)) {
             if ($console) {
-                $console->info('📄 .env.production found locally, syncing to server...');
+                $console->info('📄 Checking .env.production...');
             }
 
-            $scpResult = $sshService->execute(
-                "scp {$localEnvProduction} {$sshKey}:{$remotePath}/.env.production",
+            // Calculer le hash du fichier local
+            $localHash = md5_file($localEnvProduction);
+
+            // Récupérer le hash du fichier distant
+            $remoteHashResult = $sshService->execute(
+                "md5sum {$remoteEnvProduction} 2>/dev/null | cut -d' ' -f1 || echo ''",
                 false
             );
+            $remoteHash = trim($remoteHashResult->output);
 
-            if ($scpResult->success) {
+            // Vérifier si le fichier distant existe et comparer les hashs
+            $fileExistsResult = $sshService->execute(
+                "test -f {$remoteEnvProduction} && echo 'EXISTS' || echo 'NOT_FOUND'",
+                false
+            );
+            $fileExists = trim($fileExistsResult->output) === 'EXISTS';
+
+            // Si le fichier n'existe pas OU les hashs sont différents
+            if (! $fileExists || $localHash !== $remoteHash) {
                 if ($console) {
-                    $console->success('✅ .env.production synced to server');
-                    $console->line();
+                    if (! $fileExists) {
+                        $console->info('📄 .env.production not found on server, syncing...');
+                    } else {
+                        $console->info('📄 .env.production has changed, syncing...');
+                    }
+                }
+
+                $scpResult = $sshService->execute(
+                    "scp {$localEnvProduction} {$sshKey}:{$remoteEnvProduction}",
+                    false
+                );
+
+                if ($scpResult->success) {
+                    if ($console) {
+                        $console->success('✅ .env.production synced to server');
+                        $console->line();
+                    }
+                } else {
+                    if ($console) {
+                        $console->alertWarning('⚠️  Failed to sync .env.production to server, will use .env.example');
+                        $console->line();
+                    }
                 }
             } else {
                 if ($console) {
-                    $console->alertWarning('⚠️  Failed to sync .env.production to server, will use .env.example');
+                    $console->success('✅ .env.production is up to date');
                     $console->line();
                 }
             }

@@ -89,20 +89,19 @@ final class SetupStorageOperation
             }
         }
 
-        // Vérifier les autres liens configurés (extraction depuis le fichier config)
+        // Vérifier les autres liens configurés en comparant les hashs et les dates
         if (str_contains($configContent->output, "'links' => [")) {
-            // Extraire les liens de la config
             preg_match_all("/'([^']+)'\s*=>\s*'([^']+)'/", $configContent->output, $matches);
 
             for ($i = 0; $i < count($matches[0]); $i++) {
                 $link = $matches[1][$i];
                 $target = $matches[2][$i];
 
-                // Ne pas vérifier le lien public/storage car il a déjà été vérifié
                 if ($link === 'public/storage') {
                     continue;
                 }
 
+                // Vérifier si le lien existe
                 $linkExists = $sshService->execute("test -L {$remotePath}/{$link} && echo 'EXISTS'", false);
                 $commandsExecuted[] = "test -L {$remotePath}/{$link}";
 
@@ -111,9 +110,47 @@ final class SetupStorageOperation
                         $console->alertWarning("⚠️  {$link} symbolic link is missing");
                     }
                     $linksMissing = true;
+
+                    continue;
+                }
+
+                // Vérifier si le lien pointe vers le bon target
+                $linkTarget = $sshService->execute("readlink {$remotePath}/{$link} 2>/dev/null || echo ''", false);
+                $commandsExecuted[] = "readlink {$remotePath}/{$link}";
+                $currentTarget = trim($linkTarget->output);
+
+                if ($currentTarget !== $target) {
+                    if ($console) {
+                        $console->alertWarning("⚠️  {$link} points to wrong target ({$currentTarget}), should be {$target}");
+                    }
+                    $linksMissing = true;
+
+                    continue;
+                }
+
+                // Vérifier les dates de modification
+                $linkMtimeResult = $sshService->execute("stat -c %Y {$remotePath}/{$link} 2>/dev/null || echo '0'", false);
+                $commandsExecuted[] = "stat -c %Y {$remotePath}/{$link}";
+                $linkMtime = (int) trim($linkMtimeResult->output);
+
+                $targetMtimeResult = $sshService->execute("stat -c %Y {$target} 2>/dev/null || echo '0'", false);
+                $commandsExecuted[] = "stat -c %Y {$target}";
+                $targetMtime = (int) trim($targetMtimeResult->output);
+
+                // Vérifier les hashs des fichiers source et destination
+                $targetHash = $sshService->execute("find {$target} -type f -exec md5sum {} \; | sort -k 2 | md5sum | cut -d' ' -f1 2>/dev/null || echo ''", false);
+                $commandsExecuted[] = "find {$target} -type f -exec md5sum {} \\; | sort -k 2 | md5sum | cut -d' ' -f1";
+                $targetHashValue = trim($targetHash->output);
+
+                // Si le target a changé ou est plus récent que le lien, on doit recréer
+                if ($targetMtime > $linkMtime) {
+                    if ($console) {
+                        $console->alertWarning("⚠️  {$link} is outdated, target has been modified");
+                    }
+                    $linksMissing = true;
                 } else {
                     if ($console) {
-                        $console->success("✅ {$link} symbolic link exists");
+                        $console->success("✅ {$link} symbolic link is up to date");
                     }
                 }
             }
@@ -142,7 +179,7 @@ final class SetupStorageOperation
             }
         } else {
             if ($console) {
-                $console->success('✅ All storage symbolic links are present');
+                $console->success('✅ All storage symbolic links are present and up to date');
             }
         }
 
