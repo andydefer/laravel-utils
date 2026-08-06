@@ -48,7 +48,7 @@ final class SetupDependenciesOperation
         // Si vendor ou composer.lock manque, il faut nettoyer et réinstaller
         if (! str_contains($vendorExists->output, 'EXISTS') || ! str_contains($lockExists->output, 'EXISTS')) {
             if ($console) {
-                $console->alertWarning(' vendor or composer.lock missing, will reinstall dependencies');
+                $console->alertWarning('vendor or composer.lock missing, will reinstall dependencies');
             }
             $needsCleanup = true;
             $needsInstall = true;
@@ -75,7 +75,7 @@ final class SetupDependenciesOperation
                 // Si autoload.php est plus ancien que composer.lock, il faut réinstaller
                 if ($autoloadTime < $lockTime) {
                     if ($console) {
-                        $console->alertWarning(' vendor/autoload.php is outdated (older than composer.lock), reinstalling...');
+                        $console->alertWarning('vendor/autoload.php is outdated (older than composer.lock), reinstalling...');
                     }
                     $needsInstall = true;
                 } else {
@@ -85,7 +85,7 @@ final class SetupDependenciesOperation
                 }
             } else {
                 if ($console) {
-                    $console->alertWarning(' vendor/autoload.php missing, reinstalling...');
+                    $console->alertWarning('vendor/autoload.php missing, reinstalling...');
                 }
                 $needsInstall = true;
             }
@@ -102,7 +102,7 @@ final class SetupDependenciesOperation
                 // Si le dry-run échoue, on nettoie et réinstalle
                 if (! $dryRunResult->success || str_contains($dryRunResult->error, 'not present in the lock file')) {
                     if ($console) {
-                        $console->alertWarning(' Composer dry-run failed, cleaning and reinstalling...');
+                        $console->alertWarning('Composer dry-run failed, cleaning and reinstalling...');
                     }
                     $needsCleanup = true;
                     $needsInstall = true;
@@ -169,7 +169,7 @@ final class SetupDependenciesOperation
 
             if (! $touchResult->success) {
                 if ($console) {
-                    $console->alertWarning(' Could not touch vendor/autoload.php, but installation completed');
+                    $console->alertWarning('Could not touch vendor/autoload.php, but installation completed');
                 }
             } else {
                 if ($console) {

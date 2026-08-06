@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace AndyDefer\LaravelUtils\Directives;
 
+use AndyDefer\ConsoleWriter\Console\Components\ProgressBar;
 use AndyDefer\ConsoleWriter\Console\Console;
+use AndyDefer\ConsoleWriter\Console\Services\VirtualTerminalService;
 use AndyDefer\Directive\AbstractDirective;
 use AndyDefer\Directive\Enums\ExitCode;
 use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
@@ -27,6 +29,16 @@ final class GitPushDirective extends AbstractDirective
 
     private array $repositories;
 
+    private bool $isVerbose = false;
+
+    private int $totalTests = 0;
+
+    private int $currentTest = 0;
+
+    private string $currentTestName = '';
+
+    private VirtualTerminalService $vt;
+
     public function getSignature(): string
     {
         return 'utils:git-push 
@@ -36,7 +48,8 @@ final class GitPushDirective extends AbstractDirective
                 {--force-with-lease}#"Use --force-with-lease instead of standard push" 
                 {--force}#"Force push even if tests fail"
                 {--no-interactive}#"Disable interactive mode"
-                {--dry-run}#"Simulate the push without actually executing"';
+                {--dry-run}#"Simulate the push without actually executing"
+                {--verbose}#"Show detailed output"';
     }
 
     public function getAliases(): StringTypedCollection
@@ -52,11 +65,14 @@ final class GitPushDirective extends AbstractDirective
     protected function beforeExecute(): void
     {
         $this->console = new Console;
+        $this->vt = new VirtualTerminalService($this->console->getAnsiConverter());
         $this->loadConfiguration();
 
         $this->console->title('🚀 GIT PUSH');
         $this->console->separatorDouble();
         $this->console->line();
+
+        $this->isVerbose = $this->getFlag('verbose');
     }
 
     private function loadConfiguration(): void
@@ -77,7 +93,6 @@ final class GitPushDirective extends AbstractDirective
         $noInteractive = $this->getFlag('no-interactive');
         $dryRun = $this->getFlag('dry-run');
 
-        // Si mode non-interactif, valider directement
         if ($noInteractive) {
             if ($message === null || ! preg_match('/[a-zA-Z0-9]/', $message)) {
                 $this->console->error('❌ Commit message must contain at least one alphanumeric character');
@@ -92,7 +107,6 @@ final class GitPushDirective extends AbstractDirective
             }
         }
 
-        // Mode interactif : demander le message, les sources et les folders
         if ($message === null || empty($sources) || $folders === null) {
             $this->console->info('📝 Interactive mode enabled');
             $this->console->line();
@@ -101,17 +115,14 @@ final class GitPushDirective extends AbstractDirective
                 ->title('📋 Push configuration')
                 ->line();
 
-            // Demander le message si absent
             if ($message === null) {
                 $form->ask('💬 Commit message:', 'message', null, 'yellow');
             }
 
-            // Demander les sources si absentes
             if (empty($sources)) {
                 $form->multiChoice('🎯 Select targets:', 'sources', array_keys($this->repositories), array_keys($this->repositories));
             }
 
-            // Demander les folders si absents
             if ($folders === null) {
                 $form->multiChoice('📁 Select folders to add:', 'folders', ['src', 'resources/views', 'config', 'database', 'tests', 'routes'], ['src', 'resources/views']);
             }
@@ -131,14 +142,12 @@ final class GitPushDirective extends AbstractDirective
             }
         }
 
-        // Validation finale du message
         if ($message === null || ! preg_match('/[a-zA-Z0-9]/', $message)) {
             $this->console->error('❌ Commit message must contain at least one alphanumeric character');
 
             return ExitCode::FAILURE;
         }
 
-        // Si aucune source spécifiée, push vers toutes les cibles
         if (empty($sources)) {
             $this->console->info('📋 No targets specified, pushing to all configured targets...');
             $this->console->line();
@@ -157,6 +166,7 @@ final class GitPushDirective extends AbstractDirective
         }
 
         $validSources = $this->validateSources($sources);
+
         if (empty($validSources)) {
             $this->console->error('❌ No valid targets found');
 
@@ -265,7 +275,7 @@ final class GitPushDirective extends AbstractDirective
 
         if ($testResult !== ExitCode::SUCCESS) {
             if ($force) {
-                $this->console->alertWarning('⚠️  Tests failed but --force is enabled, continuing...');
+                $this->console->alertWarning('Tests failed but --force is enabled, continuing...');
                 $this->console->line();
 
                 return ExitCode::SUCCESS;
@@ -284,16 +294,105 @@ final class GitPushDirective extends AbstractDirective
 
     private function runTests(): ExitCode
     {
-        $process = new Process(['./vendor/bin/phpunit', '--stop-on-failure']);
-        $process->setTimeout(300);
-        $process->run();
+        // Récupérer la liste des tests pour compter
+        $listProcess = new Process(['./vendor/bin/phpunit', '--list-tests']);
+        $listProcess->run();
+        $testList = $listProcess->getOutput();
 
-        if ($process->getOutput()) {
-            $this->console->line($process->getOutput());
+        // Compter les tests
+        $this->totalTests = substr_count($testList, ' - ');
+        $this->currentTest = 0;
+
+        if ($this->totalTests === 0) {
+            $this->console->alertWarning('No tests found');
+
+            return ExitCode::SUCCESS;
         }
 
-        if ($process->getErrorOutput()) {
-            $this->console->error($process->getErrorOutput());
+        // Extraire les noms des tests
+        $testNames = [];
+        $lines = explode("\n", $testList);
+        foreach ($lines as $line) {
+            if (preg_match('/ - ([A-Za-z0-9_]+)::([A-Za-z0-9_]+)$/', $line, $matches)) {
+                $testNames[] = str_replace('_', ' ', $matches[2]);
+            }
+        }
+
+        // Créer la progress bar avec VT
+        $vt = new VirtualTerminalService($this->console->getAnsiConverter());
+
+        // Ajouter la ligne de progression
+        $vt->add('progress', '');
+        $vt->add('current_test', '');
+        $vt->add('count', '');
+        $vt->render();
+
+        // Créer une progress bar personnalisée
+        $bar = new ProgressBar(
+            $this->totalTests,
+            40,
+            '🧪 Tests',
+            '',
+            true,
+            $vt,
+            'progress'
+        );
+
+        // Lancer PHPUnit
+        $process = new Process(['./vendor/bin/phpunit', '--stop-on-failure']);
+        $process->setTimeout(300);
+        $process->start();
+
+        $dotCount = 0;
+
+        $process->wait(function ($type, $buffer) use (&$dotCount, $testNames, $bar, $vt) {
+            $buffer = trim($buffer);
+
+            if ($buffer === '.') {
+                $dotCount++;
+                $this->currentTest = $dotCount;
+
+                // Mettre à jour le nom du test courant
+                $currentTestName = $testNames[$dotCount - 1] ?? 'Running...';
+                $this->currentTestName = $currentTestName;
+
+                // Mettre à jour la barre
+                $bar->advance();
+
+                // Mettre à jour le nom du test et le compteur
+                $vt->update('current_test', '   📝 '.$currentTestName);
+                $vt->update('count', '   📊 '.$this->currentTest.' / '.$this->totalTests);
+                $vt->render();
+
+                if ($this->isVerbose) {
+                    $this->console->line('   ✅ '.$currentTestName);
+                }
+            } elseif ($this->isVerbose && ! empty($buffer) && $buffer !== '.') {
+                $this->console->line($buffer);
+            }
+        });
+
+        // Fin de la barre
+        $bar->finish();
+
+        // Afficher le résultat final
+        $vt->remove('current_test');
+        $vt->remove('count');
+
+        if ($process->isSuccessful()) {
+            $vt->update('status', '✅ All '.$this->totalTests.' tests passed successfully');
+        } else {
+            $vt->update('status', '❌ Tests failed at: '.$this->currentTestName);
+        }
+        $vt->render();
+
+        if ($this->isVerbose) {
+            if ($process->getOutput()) {
+                $this->console->line($process->getOutput());
+            }
+            if ($process->getErrorOutput()) {
+                $this->console->error($process->getErrorOutput());
+            }
         }
 
         return $process->isSuccessful() ? ExitCode::SUCCESS : ExitCode::FAILURE;
@@ -302,15 +401,15 @@ final class GitPushDirective extends AbstractDirective
     private function commitChanges(string $message, array $folders): ExitCode
     {
         if (empty($folders)) {
-            $process = new Process(['git', 'add', '.']);
+            $args = ['git', 'add', '.'];
         } else {
             $args = ['git', 'add'];
             foreach ($folders as $folder) {
                 $args[] = $folder;
             }
-            $process = new Process($args);
         }
 
+        $process = new Process($args);
         $process->run();
 
         if (! $process->isSuccessful()) {
@@ -323,13 +422,13 @@ final class GitPushDirective extends AbstractDirective
         $process->run();
 
         if (! $process->isSuccessful()) {
-            $this->console->error('❌ Error during commit: '.$process->getErrorOutput());
-
             if (str_contains($process->getErrorOutput(), 'nothing to commit')) {
                 $this->console->info('ℹ️  No changes to commit');
 
                 return ExitCode::SUCCESS;
             }
+
+            $this->console->error('❌ Error during commit: '.$process->getErrorOutput());
 
             return ExitCode::FAILURE;
         }

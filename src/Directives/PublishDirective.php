@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AndyDefer\LaravelUtils\Directives;
 
-use AndyDefer\ConsoleWriter\Console\Components\Tree;
 use AndyDefer\ConsoleWriter\Console\Console;
 use AndyDefer\Directive\AbstractDirective;
 use AndyDefer\Directive\Enums\ExitCode;
@@ -75,12 +74,13 @@ final class PublishDirective extends AbstractDirective
         $sourceDir = $this->config->getPublishSourcePath();
         $targetDir = $this->config->getPublishTargetPath();
 
-        $this->console->info('📋 Source: ' . $sourceDir);
-        $this->console->info('📋 Target: ' . $targetDir);
+        $this->console->info('📋 Source: '.$sourceDir);
+        $this->console->info('📋 Target: '.$targetDir);
         $this->console->line();
 
         if (! $this->filesystem->exists($sourceDir)) {
-            $this->console->error('❌ Source directory not found: ' . $sourceDir);
+            $this->console->error('❌ Source directory not found: '.$sourceDir);
+
             return ExitCode::FAILURE;
         }
 
@@ -93,6 +93,7 @@ final class PublishDirective extends AbstractDirective
 
         if (! $result) {
             $this->console->error('❌ Failed to copy directives');
+
             return ExitCode::FAILURE;
         }
 
@@ -112,11 +113,11 @@ final class PublishDirective extends AbstractDirective
 
     private function buildTreeRecursive(string $sourceDir, string $prefix): void
     {
-        $items = $this->filesystem->glob($sourceDir . '/*');
+        $items = $this->filesystem->glob($sourceDir.'/*');
 
         foreach ($items as $item) {
             $fileName = basename($item);
-            $relativePath = $prefix . '/' . $fileName;
+            $relativePath = $prefix.'/'.$fileName;
 
             if ($this->filesystem->isDirectory($item)) {
                 $this->buildTreeRecursive($item, $relativePath);
@@ -180,18 +181,19 @@ final class PublishDirective extends AbstractDirective
     {
         if (! $this->filesystem->exists($target)) {
             $this->filesystem->makeDirectory($target, recursive: true);
-            $this->console->success('✅ Created directory: ' . $target);
+            $this->console->success('✅ Created directory: '.$target);
             $this->console->line();
         }
 
-        $items = $this->filesystem->glob($source . '/*');
+        $items = $this->filesystem->glob($source.'/*');
 
         foreach ($items as $item) {
             $fileName = basename($item);
-            $targetPath = $target . '/' . $fileName;
+            $targetPath = $target.'/'.$fileName;
 
             if ($this->filesystem->isDirectory($item)) {
                 $this->copyDirectory($item, $targetPath, $force);
+
                 continue;
             }
 
@@ -201,14 +203,15 @@ final class PublishDirective extends AbstractDirective
             }
 
             if ($this->filesystem->exists($targetPath) && ! $force) {
-                $this->console->alertWarning('⏭️  Skipping: ' . $fileName . ' (already exists, use --force to overwrite)');
+                $this->console->alertWarning('⏭️  Skipping: '.$fileName.' (already exists, use --force to overwrite)');
                 $this->skipped++;
+
                 continue;
             }
 
             $content = $this->filesystem->get($item);
             $this->filesystem->put($targetPath, $content);
-            $this->console->success('✅ Published: ' . $fileName);
+            $this->console->success('✅ Published: '.$fileName);
             $this->copied++;
         }
 
@@ -219,9 +222,9 @@ final class PublishDirective extends AbstractDirective
     {
         $this->console->line();
         $this->console->info('📊 Summary:');
-        $this->console->line('   Copied: ' . $this->copied . ' file(s)');
+        $this->console->line('   Copied: '.$this->copied.' file(s)');
         if ($this->skipped > 0) {
-            $this->console->alertWarning('   Skipped: ' . $this->skipped . ' file(s) (use --force to overwrite)');
+            $this->console->alertWarning(' Skipped: '.$this->skipped.' file(s) (use --force to overwrite)');
         }
     }
 

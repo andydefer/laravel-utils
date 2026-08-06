@@ -86,7 +86,7 @@ final class GitTagDirective extends AbstractDirective
 
         // Vérifier si le type est invalide (l'énumération retourne null)
         if ($this->getArgument('type') === null && ! in_array($this->getArgument('type'), $validTypes, true)) {
-            $this->console->alertWarning('⚠️  Invalid tag type. Using default: patch');
+            $this->console->alertWarning('Invalid tag type. Using default: patch');
             $type = 'patch';
         }
 

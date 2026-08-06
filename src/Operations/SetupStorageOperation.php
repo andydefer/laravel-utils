@@ -39,7 +39,7 @@ final class SetupStorageOperation
 
         if (! str_contains($storageExists->output, 'EXISTS')) {
             if ($console) {
-                $console->alertWarning(' storage directory missing, creating...');
+                $console->alertWarning('storage directory missing, creating...');
             }
 
             $createStorageResult = $sshService->execute("mkdir -p {$remotePath}/storage", false);
@@ -95,11 +95,11 @@ final class SetupStorageOperation
             if ($localMtime > $remoteMtime || $localHash !== $remoteHash) {
                 if ($console) {
                     if ($remoteMtime === 0) {
-                        $console->alertWarning(' config/filesystems.php not found on server, will sync...');
+                        $console->alertWarning('config/filesystems.php not found on server, will sync...');
                     } elseif ($localMtime > $remoteMtime) {
-                        $console->alertWarning(' config/filesystems.php is newer locally, syncing...');
+                        $console->alertWarning('config/filesystems.php is newer locally, syncing...');
                     } else {
-                        $console->alertWarning(' config/filesystems.php has changed, syncing...');
+                        $console->alertWarning('config/filesystems.php has changed, syncing...');
                     }
                 }
 
@@ -117,7 +117,7 @@ final class SetupStorageOperation
                     $needsStorageLink = true;
                 } else {
                     if ($console) {
-                        $console->alertWarning('⚠️  Failed to sync config/filesystems.php, continuing...');
+                        $console->alertWarning('Failed to sync config/filesystems.php, continuing...');
                     }
                 }
             } else {
@@ -127,7 +127,7 @@ final class SetupStorageOperation
             }
         } else {
             if ($console) {
-                $console->alertWarning('⚠️  config/filesystems.php not found locally, skipping...');
+                $console->alertWarning('config/filesystems.php not found locally, skipping...');
             }
         }
 

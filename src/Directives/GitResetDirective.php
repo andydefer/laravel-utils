@@ -122,7 +122,7 @@ final class GitResetDirective extends AbstractDirective
         // Confirmation
         if (! $force) {
             $this->console->newLine();
-            $this->console->alertWarning('⚠️  WARNING: This will permanently delete all uncommitted changes!');
+            $this->console->alertWarning('WARNING: This will permanently delete all uncommitted changes!');
 
             $confirm = $this->console->form()
                 ->title('⚠️  Confirmation required')
@@ -137,7 +137,7 @@ final class GitResetDirective extends AbstractDirective
             }
         } else {
             $this->console->newLine();
-            $this->console->alertWarning('⚠️  Force mode enabled - skipping confirmation');
+            $this->console->alertWarning('Force mode enabled - skipping confirmation');
         }
 
         // Exécution du reset

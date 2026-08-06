@@ -55,7 +55,7 @@ final class DeploymentUI
 
     public static function displayConfirmation(Console $console): bool
     {
-        $console->alertWarning(' This will deploy the code to O2Switch');
+        $console->alertWarning('This will deploy the code to O2Switch');
         $console->line('   Use --force to skip confirmation');
         $console->line();
 

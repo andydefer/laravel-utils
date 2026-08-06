@@ -94,7 +94,7 @@ final class CheckServerConnectivityOperation
                     }
                 } else {
                     if ($console) {
-                        $console->alertWarning('⚠️  Failed to sync .env.production to server, will use .env.example');
+                        $console->alertWarning('Failed to sync .env.production to server, will use .env.example');
                         $console->line();
                     }
                 }
