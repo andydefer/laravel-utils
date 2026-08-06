@@ -71,4 +71,11 @@ interface UtilsConfigInterface
      * @return array{png_quality: string, jpg_quality: int, max_size: int, strip_meta: bool}
      */
     public function getImageCompressConfig(): array;
+
+    /**
+     * Get the pipelines configuration.
+     *
+     * @return array<int, string|array{0: string, 1?: array<string, mixed>}>
+     */
+    public function getPipelines(): array;
 }

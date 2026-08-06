@@ -11,6 +11,7 @@ use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
 use AndyDefer\LaravelUtils\Contracts\Config\UtilsConfigInterface;
 use AndyDefer\LaravelUtils\Operations\CheckServerConnectivityOperation;
 use AndyDefer\LaravelUtils\Operations\DeployCodeOperation;
+use AndyDefer\LaravelUtils\Operations\ExecutePipelinesOperation;
 use AndyDefer\LaravelUtils\Operations\ExportAssetsOperation;
 use AndyDefer\LaravelUtils\Operations\SetupDependenciesOperation;
 use AndyDefer\LaravelUtils\Operations\SetupEnvironmentOperation;
@@ -90,12 +91,10 @@ final class DeployDirective extends AbstractDirective
         $hls = $this->getFlag('hls');
         $skipExport = $this->getFlag('skip-export');
 
-        // Récupérer les assets depuis la configuration
         $assets = $this->config->getExportAssets();
 
         DeploymentUI::displayConfiguration($this->console, $this->deploymentConfig);
 
-        // Operation 1 & 2: Vérification de la connectivité
         $reachable = CheckServerConnectivityOperation::handle(
             $this->sshService,
             $this->deploymentConfig['ssh_key'],
@@ -108,7 +107,6 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // Demander confirmation
         if (! $force && ! $dryRun) {
             $confirmed = DeploymentUI::displayConfirmation($this->console);
             if (! $confirmed) {
@@ -118,7 +116,6 @@ final class DeployDirective extends AbstractDirective
 
         $this->contextSet('start_time', microtime(true));
 
-        // Operation 3 & 4: Déploiement du code
         $deployResult = DeployCodeOperation::handle(
             $this->sshService,
             $this->deploymentConfig['git_branch'],
@@ -133,7 +130,6 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // Operation 5: Installation des dépendances
         $dependenciesResult = SetupDependenciesOperation::handle(
             $this->sshService,
             $this->deploymentConfig['remote_path'],
@@ -148,7 +144,6 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // Operation 6: Assets frontend
         $frontendResult = SetupFrontendAssetsOperation::handle(
             $this->sshService,
             $this->deploymentConfig['remote_path'],
@@ -163,7 +158,6 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // Operation 7: Export des assets (skip si flag présent)
         if (! $skipExport && ! empty($assets)) {
             $exportResult = ExportAssetsOperation::handle(
                 $this->sshService,
@@ -185,10 +179,9 @@ final class DeployDirective extends AbstractDirective
                 return ExitCode::FAILURE;
             }
         } elseif ($skipExport && $this->console) {
-            $this->console->logInfo('⏭️  Skipping assets export (--skip-export enabled)');
+            $this->console->info('⏭️  Skipping assets export (--skip-export enabled)');
         }
 
-        // Operation 8: Configuration de l'environnement
         $envResult = SetupEnvironmentOperation::handle(
             $this->sshService,
             $this->deploymentConfig['remote_path'],
@@ -203,7 +196,6 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // Operation 9: Configuration du storage
         $storageResult = SetupStorageOperation::handle(
             $this->sshService,
             $this->deploymentConfig['remote_path'],
@@ -218,7 +210,6 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // Operation 10: Optimisation Laravel et migrations
         $optimizationResult = SetupLaravelOptimizationOperation::handle(
             $this->sshService,
             $this->deploymentConfig['remote_path'],
@@ -226,21 +217,38 @@ final class DeployDirective extends AbstractDirective
             $this->console
         );
 
-        $duration = microtime(true) - $this->contextGet('start_time');
-
         if (! $optimizationResult->success) {
+            $duration = microtime(true) - $this->contextGet('start_time');
             DeploymentUI::displayResult($this->console, $optimizationResult, $duration);
 
             return ExitCode::FAILURE;
         }
 
-        // Fusionner toutes les commandes exécutées
+        $pipelinesResult = ExecutePipelinesOperation::handle(
+            $this->sshService,
+            $this->deploymentConfig['remote_path'],
+            $this->getKernel(),
+            $this->config,
+            $dryRun,
+            $this->console
+        );
+
+        if (! $pipelinesResult->success) {
+            $duration = microtime(true) - $this->contextGet('start_time');
+            DeploymentUI::displayResult($this->console, $pipelinesResult, $duration);
+
+            return ExitCode::FAILURE;
+        }
+
+        $duration = microtime(true) - $this->contextGet('start_time');
+
         $mergedCommands = $deployResult->commands_executed
             ->merge($dependenciesResult->commands_executed)
             ->merge($frontendResult->commands_executed)
             ->merge($envResult->commands_executed)
             ->merge($storageResult->commands_executed)
-            ->merge($optimizationResult->commands_executed);
+            ->merge($optimizationResult->commands_executed)
+            ->merge($pipelinesResult->commands_executed);
 
         if (! $skipExport && ! empty($assets) && isset($exportResult)) {
             $mergedCommands = $mergedCommands->merge($exportResult->commands_executed);

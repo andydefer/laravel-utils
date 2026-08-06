@@ -1,5 +1,7 @@
 <?php
 
+use AndyDefer\LaravelUtils\Directives\O2switchDeployInfoDirective;
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -147,5 +149,29 @@ return [
         'jpg_quality' => 50,
         'max_size' => 0,
         'strip_meta' => false,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pipelines Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure custom pipelines to execute after deployment.
+    | You can use either a string (runSignature) or an array [FQCN, argv].
+    |
+    | Examples:
+    | 'pipelines' => [
+    |     // Simple string (runSignature)
+    |     'utils:support --all',
+    |     // Array with FQCN and args (runDirective)
+    |     [O2switchDeployInfoDirective::class, ['--verbose']]
+    | ],
+    |
+    */
+    'pipelines' => [
+
+        //  'utils:support --all',
+        // 'queue:restart',
+        [O2switchDeployInfoDirective::class, ['--verbose']],
     ],
 ];

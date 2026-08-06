@@ -78,6 +78,8 @@ final class UtilsConfig implements UtilsConfigInterface
 
     private const DEFAULT_EXPORT_ASSETS = [];
 
+    private const DEFAULT_PIPELINES = [];
+
     private const DEFAULT_HLS_CONFIG = [
         'segment_duration' => 4,
         'crf' => 28,
@@ -204,5 +206,12 @@ final class UtilsConfig implements UtilsConfigInterface
         $config = $this->config->get('utils.image_compress', self::DEFAULT_IMAGE_COMPRESS_CONFIG);
 
         return is_array($config) ? array_merge(self::DEFAULT_IMAGE_COMPRESS_CONFIG, $config) : self::DEFAULT_IMAGE_COMPRESS_CONFIG;
+    }
+
+    public function getPipelines(): array
+    {
+        $pipelines = $this->config->get('utils.pipelines', self::DEFAULT_PIPELINES);
+
+        return is_array($pipelines) ? $pipelines : [];
     }
 }
