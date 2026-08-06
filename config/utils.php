@@ -84,4 +84,68 @@ return [
     */
     'publish_source' => 'app/Directives',
     'publish_target' => 'app/Directives',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Export Assets Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure assets to export during deployment.
+    |
+    */
+    'export_assets' => [
+        'storage/app/public/images',
+        'storage/app/public/videos',
+        'storage/app/public/assets',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | HLS Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure HLS generation settings for videos:hls directive.
+    |
+    */
+    'hls' => [
+        'segment_duration' => 4,
+        'crf' => 28,
+        'preset' => 'fast',
+        'audio_bitrate' => '128k',
+        'resolutions' => ['144', '240', '360', '480', '720'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Video Compression Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure video compression settings for videos:compress directive.
+    |
+    */
+    'video_compress' => [
+        'width' => 0,
+        'height' => 0,
+        'crf' => 28,
+        'preset' => 'medium',
+        'video_codec' => 'libx264',
+        'audio_codec' => 'aac',
+        'audio_bitrate' => '128k',
+        'pixel_format' => 'yuv420p',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Image Compression Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure image compression settings for images:compress directive.
+    |
+    */
+    'image_compress' => [
+        'png_quality' => '45-50',
+        'jpg_quality' => 50,
+        'max_size' => 0,
+        'strip_meta' => false,
+    ],
 ];

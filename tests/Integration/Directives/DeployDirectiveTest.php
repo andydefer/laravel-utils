@@ -25,17 +25,26 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     private array $originalDeploymentConfig;
 
+    private array $originalExportAssets;
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        // Arrange: Configuration de base
+        // Save original configurations
         $this->originalDeploymentConfig = config('utils.deployment', []);
+        $this->originalExportAssets = config('utils.export_assets', []);
 
+        // Default test config
         Config::set('utils.deployment', [
             'ssh_key' => 'test-server',
             'remote_path' => '~/sites/test-app.com',
             'git_branch' => 'main',
+        ]);
+
+        Config::set('utils.export_assets', [
+            'storage/app/public/images',
+            'storage/app/public/videos',
         ]);
 
         $this->app->singleton(UtilsConfigInterface::class, function ($app) {
@@ -53,8 +62,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        // Arrange: Nettoyage
+        // Restore original configurations
         Config::set('utils.deployment', $this->originalDeploymentConfig);
+        Config::set('utils.export_assets', $this->originalExportAssets);
 
         $this->service->destroy();
         parent::tearDown();
@@ -62,39 +72,27 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_alias_works(): void
     {
-        // Arrange
         $command = 'deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🚀 O2SWITCH DEPLOYMENT', $response->output);
     }
 
     public function test_o2d_alias_works(): void
     {
-        // Arrange
         $command = 'o2d --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🚀 O2SWITCH DEPLOYMENT', $response->output);
     }
 
     public function test_deploy_displays_configuration(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('📋 Deployment Configuration:', $response->output);
         $this->assertStringContainsString('test-server', $response->output);
@@ -104,13 +102,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_dry_run_mode(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
         $this->assertStringContainsString('git fetch origin main', $response->output);
@@ -139,13 +133,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_force_flag_in_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --force --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
         $this->assertStringContainsString('✅ Dry run completed successfully!', $response->output);
@@ -153,13 +143,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_verbose_flag_in_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --verbose --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
         $this->assertStringContainsString('✅ Dry run completed successfully!', $response->output);
@@ -167,13 +153,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_all_flags_in_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --force --verbose --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
         $this->assertStringContainsString('✅ Dry run completed successfully!', $response->output);
@@ -181,13 +163,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_displays_summary_in_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
 
         $output = strip_ansi($response->output);
@@ -199,20 +177,15 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_success_message_after_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🎉 Deployment completed successfully!', $response->output);
     }
 
     public function test_deploy_uses_configured_settings(): void
     {
-        // Arrange
         Config::set('utils.deployment', [
             'ssh_key' => 'production-server',
             'remote_path' => '~/sites/prod-app.com',
@@ -230,10 +203,8 @@ final class DeployDirectiveTest extends IntegrationTestCase
         );
         $this->service->getKernel()->addDirective(DeployDirective::class);
 
-        // Act
         $response = $this->service->run('o2switch:deploy --dry-run');
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('production-server', $response->output);
         $this->assertStringContainsString('~/sites/prod-app.com', $response->output);
@@ -262,13 +233,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_skips_connectivity_checks_in_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringNotContainsString('🔍 Checking server connectivity...', $response->output);
         $this->assertStringNotContainsString('🔍 Checking remote path...', $response->output);
@@ -276,13 +243,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_full_dry_run_flow(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --force --verbose --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
 
         $output = strip_ansi($response->output);
@@ -322,13 +285,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_without_flags_in_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('✅ Dry run completed successfully!', $response->output);
     }
@@ -339,13 +298,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_includes_environment_setup_in_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('test -f', $response->output);
         $this->assertStringContainsString('.env.example', $response->output);
@@ -354,13 +309,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_shows_environment_setup_messages(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
         $this->assertStringContainsString('test -f', $response->output);
@@ -374,13 +325,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_includes_dependencies_setup_in_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('composer install --dry-run', $response->output);
         $this->assertStringContainsString('composer install', $response->output);
@@ -389,13 +336,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_shows_dependencies_setup_messages(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
         $this->assertStringContainsString('composer install --dry-run', $response->output);
@@ -410,13 +353,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_includes_frontend_assets_setup_in_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('npm install (if manifest missing or outdated)', $response->output);
         $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $response->output);
@@ -424,13 +363,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_shows_frontend_assets_setup_messages(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
         $this->assertStringContainsString('test -f public/build/manifest.json', $response->output);
@@ -440,13 +375,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_dry_run_shows_frontend_check_message(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('test -f public/build/manifest.json', $response->output);
     }
@@ -457,13 +388,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_includes_storage_setup_in_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('php artisan storage:link', $response->output);
         $this->assertStringContainsString('(Check and create storage symbolic links)', $response->output);
@@ -471,13 +398,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_shows_storage_setup_messages(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
         $this->assertStringContainsString('php artisan storage:link', $response->output);
@@ -485,13 +408,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_dry_run_shows_storage_check_message(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('php artisan storage:link', $response->output);
         $this->assertStringContainsString('(Check and create storage symbolic links)', $response->output);
@@ -503,13 +422,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_includes_laravel_optimization_in_dry_run(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('php artisan cache:clear', $response->output);
         $this->assertStringContainsString('php artisan config:clear', $response->output);
@@ -524,13 +439,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_shows_laravel_optimization_messages(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
         $this->assertStringContainsString('php artisan cache:clear', $response->output);
@@ -541,18 +452,94 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_summary_shows_correct_commands_count_with_all_operations_including_optimization(): void
     {
-        // Arrange
         $command = 'o2switch:deploy --dry-run';
-
-        // Act
         $response = $this->service->run($command);
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
 
         $output = strip_ansi($response->output);
 
-        // Vérifier que le nombre de commandes inclut toutes les opérations
         $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
+    }
+
+    // ============================================================
+    // TESTS POUR ExportAssetsOperation (via config)
+    // ============================================================
+
+    public function test_deploy_includes_assets_export_in_dry_run(): void
+    {
+        $command = 'o2switch:deploy --dry-run';
+
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('rsync -avz assets to', $response->output);
+        $this->assertStringContainsString('images:compress (would compress images)', $response->output);
+    }
+
+    public function test_deploy_assets_with_hls_flag_in_dry_run(): void
+    {
+        $command = 'o2switch:deploy --dry-run --hls';
+
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('videos:hls (would generate HLS)', $response->output);
+    }
+
+    public function test_deploy_assets_with_no_compress_flag_in_dry_run(): void
+    {
+        $command = 'o2switch:deploy --dry-run --no-compress';
+
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringNotContainsString('images:compress', $response->output);
+    }
+
+    public function test_deploy_assets_uses_config_assets_when_configured(): void
+    {
+        Config::set('utils.export_assets', [
+            'storage/app/public/config-assets',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $this->service->destroy();
+        $this->service = new DirectiveTestingService(
+            application: $this->app,
+            sourcePaths: []
+        );
+        $this->service->getKernel()->addDirective(DeployDirective::class);
+
+        $response = $this->service->run('o2switch:deploy --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('rsync -avz assets to', $response->output);
+        $this->assertStringContainsString('images:compress (would compress images)', $response->output);
+    }
+
+    public function test_deploy_assets_shows_export_summary_in_dry_run(): void
+    {
+        $command = 'o2switch:deploy --dry-run';
+
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('rsync -avz assets to', $response->output);
+    }
+
+    public function test_deploy_assets_with_all_flags_in_dry_run(): void
+    {
+        $command = 'o2switch:deploy --force --verbose --dry-run --no-compress --hls';
+
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('rsync -avz assets to', $response->output);
+        $this->assertStringContainsString('videos:hls (would generate HLS)', $response->output);
+        $this->assertStringNotContainsString('images:compress', $response->output);
     }
 }

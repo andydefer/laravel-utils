@@ -11,6 +11,7 @@ use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
 use AndyDefer\LaravelUtils\Contracts\Config\UtilsConfigInterface;
 use AndyDefer\LaravelUtils\Operations\CheckServerConnectivityOperation;
 use AndyDefer\LaravelUtils\Operations\DeployCodeOperation;
+use AndyDefer\LaravelUtils\Operations\ExportAssetsOperation;
 use AndyDefer\LaravelUtils\Operations\SetupDependenciesOperation;
 use AndyDefer\LaravelUtils\Operations\SetupEnvironmentOperation;
 use AndyDefer\LaravelUtils\Operations\SetupFrontendAssetsOperation;
@@ -35,7 +36,9 @@ final class DeployDirective extends AbstractDirective
         return 'o2switch:deploy 
                 {--force}#"Skip confirmation and force deployment"
                 {--verbose}#"Show detailed output"
-                {--dry-run}#"Simulate the operation without actually executing"';
+                {--dry-run}#"Simulate the operation without actually executing"
+                {--no-compress}#"Skip compression of assets before export"
+                {--hls}#"Generate HLS streams for videos before export"';
     }
 
     public function getAliases(): StringTypedCollection
@@ -82,6 +85,11 @@ final class DeployDirective extends AbstractDirective
     {
         $dryRun = $this->getFlag('dry-run');
         $force = $this->getFlag('force');
+        $noCompress = $this->getFlag('no-compress');
+        $hls = $this->getFlag('hls');
+
+        // Récupérer les assets depuis la configuration
+        $assets = $this->config->getExportAssets();
 
         DeploymentUI::displayConfiguration($this->console, $this->deploymentConfig);
 
@@ -153,7 +161,30 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // Operation 7: Configuration de l'environnement
+        // Operation 7: Export des assets
+        if (! empty($assets)) {
+            $exportResult = ExportAssetsOperation::handle(
+                $this->sshService,
+                $this->deploymentConfig['remote_path'],
+                $assets,
+                $force,
+                $noCompress,
+                $hls,
+                $dryRun,
+                $this->console,
+                $this->getKernel(),
+                $this->config
+            );
+
+            if (! $exportResult->success) {
+                $duration = microtime(true) - $this->contextGet('start_time');
+                DeploymentUI::displayResult($this->console, $exportResult, $duration);
+
+                return ExitCode::FAILURE;
+            }
+        }
+
+        // Operation 8: Configuration de l'environnement
         $envResult = SetupEnvironmentOperation::handle(
             $this->sshService,
             $this->deploymentConfig['remote_path'],
@@ -168,7 +199,7 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // Operation 8: Configuration du storage
+        // Operation 9: Configuration du storage
         $storageResult = SetupStorageOperation::handle(
             $this->sshService,
             $this->deploymentConfig['remote_path'],
@@ -183,7 +214,7 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // Operation 9: Optimisation Laravel et migrations
+        // Operation 10: Optimisation Laravel et migrations
         $optimizationResult = SetupLaravelOptimizationOperation::handle(
             $this->sshService,
             $this->deploymentConfig['remote_path'],
@@ -206,6 +237,10 @@ final class DeployDirective extends AbstractDirective
             ->merge($envResult->commands_executed)
             ->merge($storageResult->commands_executed)
             ->merge($optimizationResult->commands_executed);
+
+        if (! empty($assets) && isset($exportResult)) {
+            $mergedCommands = $mergedCommands->merge($exportResult->commands_executed);
+        }
 
         $finalResult = DeploymentResultRecord::from([
             'success' => true,
