@@ -22,6 +22,19 @@ final class CheckServerConnectivityOperation
             return false;
         }
 
+        $localEnvProduction = getcwd().'/.env.production';
+        if (file_exists($localEnvProduction)) {
+            $scpResult = $sshService->execute(
+                "scp {$localEnvProduction} {$sshKey}:{$remotePath}/.env.production",
+                false
+            );
+
+            if (! $scpResult->success) {
+                // Log mais on continue, on utilisera .env.example
+                // On pourrait retourner false ici
+            }
+        }
+
         return true;
     }
 }
