@@ -316,7 +316,7 @@ final class GitPushDirective extends AbstractDirective
         $this->currentTest = 0;
 
         if ($this->totalTests === 0) {
-            $this->console->alertWarning(' No tests found');
+            $this->console->alertWarning('No tests found');
 
             return ExitCode::SUCCESS;
         }
@@ -324,12 +324,29 @@ final class GitPushDirective extends AbstractDirective
         $testNames = [];
         $lines = explode("\n", $testList);
         foreach ($lines as $line) {
-            if (preg_match('/ - ([A-Za-z0-9_]+)::([A-Za-z0-9_]+)$/', $line, $matches)) {
-                $testNames[] = str_replace('_', ' ', $matches[2]);
+            if (str_contains($line, ' - ')) {
+                // Extraire la partie après " - "
+                $parts = explode(' - ', $line);
+                if (count($parts) >= 2) {
+                    $testPath = $parts[1];
+                    // Exploder par "::" pour séparer la classe et la méthode
+                    $testParts = explode('::', $testPath);
+                    if (count($testParts) >= 2) {
+                        $className = $testParts[0];
+                        $methodName = $testParts[1];
+                        // Remplacer les _ par des espaces
+                        $methodName = str_replace('_', ' ', $methodName);
+                        // Extraire le nom court de la classe (sans le namespace complet)
+                        $classParts = explode('\\', $className);
+                        $shortClassName = end($classParts);
+                        $testNames[] = $shortClassName.' → '.$methodName;
+                    }
+                }
             }
         }
 
         $this->vt->clear();
+        $this->vt->add('status', '🧪 Running tests...');
         $this->vt->add('progress', '');
         $this->vt->add('current_test', '');
         $this->vt->add('count', '');
