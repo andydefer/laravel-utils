@@ -7,18 +7,32 @@ namespace AndyDefer\LaravelUtils\Directives;
 use AndyDefer\Directive\AbstractDirective;
 use AndyDefer\Directive\Enums\ExitCode;
 use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
+use AndyDefer\LaravelUtils\Enums\FileSizeUnit;
+use AndyDefer\LaravelUtils\Enums\ImageExtension;
+use AndyDefer\LaravelUtils\Utilities\FileFinderUtility;
 use AndyDefer\PhpServices\Contracts\FileSystemInterface;
 use Illuminate\Support\Collection;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 
+/**
+ * CLI directive for compressing PNG and JPG/JPEG images.
+ *
+ * @example
+ * // Compress all images in a directory
+ * ./bin/afya images:compress storage/app/public/images compressed/images --recursive
+ *
+ * // Compress with custom quality
+ * ./bin/afya images:compress storage/app/public/images compressed/images png-quality=30-40 jpg-quality=70
+ *
+ * // Dry run to see what would be compressed
+ * ./bin/afya images:compress storage/app/public/images compressed/images --dry-run
+ */
 final class CompressImagesDirective extends AbstractDirective
 {
     private const PNG_QUALITY_DEFAULT = '45-50';
 
     private const JPG_QUALITY_DEFAULT = 50;
-
-    private const FILE_SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
 
     private const MIN_SIZE_THRESHOLD_BYTES = 10240;
 
@@ -59,8 +73,9 @@ final class CompressImagesDirective extends AbstractDirective
         $this->newLine();
 
         $this->initializeServices();
-        $this->ensureSourceExists($this->getArgument('source'));
         $this->ensureDependenciesAreInstalled();
+        FileFinderUtility::ensureSourceExists($this->getArgument('source'), $this->fileSystem);
+        FileFinderUtility::ensureDestinationExists($this->getArgument('destination'), $this->fileSystem);
     }
 
     protected function execute(): ExitCode
@@ -68,7 +83,11 @@ final class CompressImagesDirective extends AbstractDirective
         $config = $this->buildCompressionConfig();
         $this->initializeContext($config);
 
-        $files = $this->findImages($config['source'], $config['recursive']);
+        $files = FileFinderUtility::findImages(
+            $config['source'],
+            ImageExtension::values(),
+            $this->fileSystem
+        );
 
         if ($files->isEmpty()) {
             $this->getConsole()->alertWarning('⚠️ No images found to compress');
@@ -79,15 +98,12 @@ final class CompressImagesDirective extends AbstractDirective
         $this->info('📁 Found '.$files->count().' images to process');
         $this->newLine();
 
-        // ✅ Vérifier dry-run AVANT de créer le dossier de destination
         if ($config['dryRun']) {
             $this->performDryRun($files);
 
             return ExitCode::SUCCESS;
         }
 
-        // ✅ Continuer seulement si ce n'est pas un dry-run
-        $this->ensureDestinationExists($config['destination']);
         $this->processImages($files, $config);
         $this->displaySummary();
 
@@ -130,26 +146,6 @@ final class CompressImagesDirective extends AbstractDirective
         return $process->isSuccessful();
     }
 
-    private function ensureSourceExists(string $source): void
-    {
-        if ($this->fileSystem->exists($source)) {
-            $this->info("✅ Source directory: {$source}");
-
-            return;
-        }
-
-        $this->error("❌ Source directory not found: {$source}");
-        throw new RuntimeException("Source directory not found: {$source}");
-    }
-
-    private function ensureDestinationExists(string $destination): void
-    {
-        if (! $this->fileSystem->exists($destination)) {
-            $this->fileSystem->ensureDirectoryExists($destination);
-            $this->info("📁 Created destination directory: {$destination}");
-        }
-    }
-
     private function buildCompressionConfig(): array
     {
         $maxSizeKB = (int) ($this->getArgument('max-size') ?? 0);
@@ -179,54 +175,12 @@ final class CompressImagesDirective extends AbstractDirective
         $this->contextSet('skip_compressed', $config['skipCompressed']);
     }
 
-    private function findImages(string $source, bool $recursive): Collection
-    {
-        $files = $recursive
-            ? $this->findImagesRecursively($source)
-            : $this->findImagesInDirectory($source);
-
-        return collect($files)->filter(fn (string $path): bool => $this->fileSystem->isFile($path));
-    }
-
-    private function findImagesInDirectory(string $directory): array
-    {
-        $pattern = $directory.'/*.{jpg,jpeg,png}';
-
-        return glob($pattern, GLOB_BRACE) ?: [];
-    }
-
-    private function findImagesRecursively(string $directory): array
-    {
-        $files = [];
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($directory, \RecursiveDirectoryIterator::SKIP_DOTS)
-        );
-
-        foreach ($iterator as $file) {
-            if (! $file->isFile()) {
-                continue;
-            }
-
-            $extension = strtolower($file->getExtension());
-            if (in_array($extension, ['jpg', 'jpeg', 'png'], true)) {
-                $files[] = $file->getPathname();
-            }
-        }
-
-        return $files;
-    }
-
     private function performDryRun(Collection $files): void
     {
         $this->newLine();
         $this->info('📋 DRY RUN - No changes will be made');
         $this->newLine();
-        $this->listFiles($files);
-    }
-
-    private function listFiles(Collection $files): void
-    {
-        $this->line('📋 Files to compress:');
+        $this->line('📋 Images to compress:');
         $this->newLine();
 
         $totalSize = 0;
@@ -234,33 +188,22 @@ final class CompressImagesDirective extends AbstractDirective
         foreach ($files as $file) {
             $size = $this->fileSystem->size($file);
             $totalSize += $size;
-            $relative = $this->getRelativePath($file);
-            $this->line("   • {$relative} ({$this->formatSize($size)})");
+            $relative = FileFinderUtility::getRelativePath($file, $this->getArgument('source'));
+            $this->line("   • {$relative} (".FileSizeUnit::format($size).')');
         }
 
         $this->newLine();
-        $this->line('📊 Total: '.$files->count().' files, '.$this->formatSize($totalSize));
+        $this->line('📊 Total: '.$files->count().' files, '.FileSizeUnit::format($totalSize));
     }
 
     private function processImages(Collection $files, array $config): void
     {
-        $processedCount = 0;
-        $skippedCount = 0;
-
         foreach ($files as $file) {
             if ($this->shouldSkipImage($file, $config)) {
-                $skippedCount++;
-
                 continue;
             }
 
             $this->compressSingleImage($file, $config);
-            $processedCount++;
-        }
-
-        if ($skippedCount > 0) {
-            $this->newLine();
-            $this->info("⏭️  Skipped {$skippedCount} already compressed images");
         }
     }
 
@@ -285,8 +228,8 @@ final class CompressImagesDirective extends AbstractDirective
             return false;
         }
 
-        $relative = $this->getRelativePath($file);
-        $this->line("   ⏭️  {$relative} - skipped (size < ".$this->formatSize($config['maxSize']).')');
+        $relative = FileFinderUtility::getRelativePath($file, $config['source']);
+        $this->line("   ⏭️  {$relative} - skipped (size < ".FileSizeUnit::format($config['maxSize']).')');
 
         return true;
     }
@@ -301,7 +244,7 @@ final class CompressImagesDirective extends AbstractDirective
             return false;
         }
 
-        $relative = $this->getRelativePath($file);
+        $relative = FileFinderUtility::getRelativePath($file, $config['source']);
         $this->line("   ⏭️  {$relative} - already compressed, skipping");
 
         return true;
@@ -354,7 +297,7 @@ final class CompressImagesDirective extends AbstractDirective
     private function compressSingleImage(string $file, array $config): void
     {
         $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-        $relativePath = $this->getRelativePath($file);
+        $relativePath = FileFinderUtility::getRelativePath($file, $config['source']);
 
         $destinationPath = $config['destination'].'/'.$relativePath;
         $destinationDir = dirname($destinationPath);
@@ -489,7 +432,7 @@ final class CompressImagesDirective extends AbstractDirective
         $savedPercent = $sizeBefore > 0 ? round(($saved / $sizeBefore) * 100, 1) : 0;
 
         if ($saved > 0) {
-            $this->info("   ✅ {$relativePath} - saved {$this->formatSize($saved)} ({$savedPercent}%)");
+            $this->info("   ✅ {$relativePath} - saved ".FileSizeUnit::format($saved)." ({$savedPercent}%)");
         } else {
             $this->line("   ⏭️  {$relativePath} - no size reduction");
         }
@@ -512,46 +455,8 @@ final class CompressImagesDirective extends AbstractDirective
             $this->line("   ⏭️  Files skipped: {$skippedCount}");
         }
 
-        $this->line('   📦 Size before: '.$this->formatSize($sizeBefore));
-        $this->line('   📦 Size after: '.$this->formatSize($sizeAfter));
-        $this->line('   💾 Space saved: '.$this->formatSize($saved)." ({$savedPercent}%)");
-    }
-
-    private function formatSize(int $bytes): string
-    {
-        $unitIndex = 0;
-
-        while ($bytes >= 1024 && $unitIndex < count(self::FILE_SIZE_UNITS) - 1) {
-            $bytes /= 1024;
-            $unitIndex++;
-        }
-
-        return round($bytes, 2).' '.self::FILE_SIZE_UNITS[$unitIndex];
-    }
-
-    /**
-     * Normalise un chemin pour la comparaison.
-     */
-    private function normalizePath(string $path): string
-    {
-        $path = str_replace('\\', '/', $path);
-
-        return $path;
-    }
-
-    /**
-     * Retourne le chemin relatif par rapport à la source.
-     */
-    private function getRelativePath(string $file): string
-    {
-        $source = $this->getArgument('source');
-        $normalizedSource = $this->normalizePath($source);
-        $normalizedFile = $this->normalizePath($file);
-
-        if (str_starts_with($normalizedFile, $normalizedSource.'/')) {
-            return ltrim(substr($normalizedFile, strlen($normalizedSource) + 1), '/');
-        }
-
-        return basename($file);
+        $this->line('   📦 Size before: '.FileSizeUnit::format($sizeBefore));
+        $this->line('   📦 Size after: '.FileSizeUnit::format($sizeAfter));
+        $this->line('   💾 Space saved: '.FileSizeUnit::format($saved)." ({$savedPercent}%)");
     }
 }
