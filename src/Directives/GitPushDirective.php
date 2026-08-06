@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AndyDefer\LaravelUtils\Directives;
 
-use AndyDefer\ConsoleWriter\Console\Components\ProgressBar;
 use AndyDefer\ConsoleWriter\Console\Console;
 use AndyDefer\ConsoleWriter\Console\Services\VirtualTerminalService;
 use AndyDefer\Directive\AbstractDirective;
@@ -41,7 +40,13 @@ final class GitPushDirective extends AbstractDirective
 
     private float $lastRenderTime = 0;
 
-    private const RENDER_INTERVAL = 600000; // 600ms en microsecondes
+    private const RENDER_INTERVAL = 300000; // 600ms en microsecondes
+
+    private const BAR_WIDTH = 40;
+
+    private const COMPLETE_CHAR = '█';
+
+    private const EMPTY_CHAR = '░';
 
     public function getSignature(): string
     {
@@ -85,6 +90,25 @@ final class GitPushDirective extends AbstractDirective
         $app = $this->getApplication();
         $this->config = $app->make(UtilsConfigInterface::class);
         $this->repositories = $this->config->getRepositories();
+    }
+
+    private function buildProgressBar(int $current, int $total, string $prefix = ''): string
+    {
+        $percentage = ($current / $total) * 100;
+        $filled = (int) round(self::BAR_WIDTH * ($current / $total));
+
+        $bar = '['
+            .str_repeat(self::COMPLETE_CHAR, $filled)
+            .str_repeat(self::EMPTY_CHAR, self::BAR_WIDTH - $filled)
+            .']';
+
+        $output = '';
+        if ($prefix !== '') {
+            $output .= $prefix.' ';
+        }
+        $output .= $bar.' '.number_format($percentage, 0).'%';
+
+        return $output;
     }
 
     private function renderWithThrottle(): void
@@ -295,7 +319,7 @@ final class GitPushDirective extends AbstractDirective
 
         if ($testResult !== ExitCode::SUCCESS) {
             if ($force) {
-                $this->console->alertWarning(' Tests failed but --force is enabled, continuing...');
+                $this->console->alertWarning('Tests failed but --force is enabled, continuing...');
                 $this->console->line();
 
                 return ExitCode::SUCCESS;
@@ -347,21 +371,11 @@ final class GitPushDirective extends AbstractDirective
 
         $this->vt->clear();
         $this->vt->add('status', '🧪 Running tests...');
-        $this->vt->add('progress', '');
+        $this->vt->add('progress', $this->buildProgressBar(0, $this->totalTests, '🧪 Tests'));
         $this->vt->add('current_test', '');
         $this->vt->add('count', '');
         $this->vt->render();
         $this->lastRenderTime = microtime(true) * 1000000;
-
-        $bar = new ProgressBar(
-            $this->totalTests,
-            40,
-            '🧪 Tests',
-            '',
-            true,
-            $this->vt,
-            'progress'
-        );
 
         $process = new Process(['./vendor/bin/phpunit', '--stop-on-failure']);
         $process->setTimeout(300);
@@ -369,7 +383,7 @@ final class GitPushDirective extends AbstractDirective
 
         $dotCount = 0;
 
-        $process->wait(function ($type, $buffer) use (&$dotCount, $testNames, $bar) {
+        $process->wait(function ($type, $buffer) use (&$dotCount, $testNames) {
             $buffer = trim($buffer);
 
             if ($buffer === '.') {
@@ -379,8 +393,7 @@ final class GitPushDirective extends AbstractDirective
                 $currentTestName = $testNames[$dotCount - 1] ?? 'Running...';
                 $this->currentTestName = $currentTestName;
 
-                $bar->advance();
-
+                $this->vt->update('progress', $this->buildProgressBar($this->currentTest, $this->totalTests, '🧪 Tests'));
                 $this->vt->update('current_test', '   '.$currentTestName);
                 $this->vt->update('count', '   '.$this->currentTest.' / '.$this->totalTests);
 
@@ -394,8 +407,7 @@ final class GitPushDirective extends AbstractDirective
             }
         });
 
-        $bar->finish();
-
+        $this->vt->update('progress', $this->buildProgressBar($this->totalTests, $this->totalTests, '🧪 Tests'));
         $this->vt->remove('current_test');
         $this->vt->remove('count');
 
