@@ -38,7 +38,8 @@ final class DeployDirective extends AbstractDirective
                 {--verbose}#"Show detailed output"
                 {--dry-run}#"Simulate the operation without actually executing"
                 {--no-compress}#"Skip compression of assets before export"
-                {--hls}#"Generate HLS streams for videos before export"';
+                {--hls}#"Generate HLS streams for videos before export"
+                {--skip-export}#"Skip assets export step"';
     }
 
     public function getAliases(): StringTypedCollection
@@ -87,6 +88,7 @@ final class DeployDirective extends AbstractDirective
         $force = $this->getFlag('force');
         $noCompress = $this->getFlag('no-compress');
         $hls = $this->getFlag('hls');
+        $skipExport = $this->getFlag('skip-export');
 
         // Récupérer les assets depuis la configuration
         $assets = $this->config->getExportAssets();
@@ -161,8 +163,8 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // Operation 7: Export des assets
-        if (! empty($assets)) {
+        // Operation 7: Export des assets (skip si flag présent)
+        if (! $skipExport && ! empty($assets)) {
             $exportResult = ExportAssetsOperation::handle(
                 $this->sshService,
                 $this->deploymentConfig['remote_path'],
@@ -182,6 +184,8 @@ final class DeployDirective extends AbstractDirective
 
                 return ExitCode::FAILURE;
             }
+        } elseif ($skipExport && $this->console) {
+            $this->console->logInfo('⏭️  Skipping assets export (--skip-export enabled)');
         }
 
         // Operation 8: Configuration de l'environnement
@@ -238,7 +242,7 @@ final class DeployDirective extends AbstractDirective
             ->merge($storageResult->commands_executed)
             ->merge($optimizationResult->commands_executed);
 
-        if (! empty($assets) && isset($exportResult)) {
+        if (! $skipExport && ! empty($assets) && isset($exportResult)) {
             $mergedCommands = $mergedCommands->merge($exportResult->commands_executed);
         }
 
