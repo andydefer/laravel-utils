@@ -90,7 +90,8 @@ final class DeployDirective extends AbstractDirective
             $this->sshService,
             $this->deploymentConfig['ssh_key'],
             $this->deploymentConfig['remote_path'],
-            $dryRun
+            $dryRun,
+            $this->console
         );
 
         if (! $reachable) {
