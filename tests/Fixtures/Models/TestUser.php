@@ -36,7 +36,7 @@ class TestUser extends Model
 
     protected function slug(): Attribute
     {
-        return AttributeProxy::make(TestSlug::class);
+        return AttributeProxy::required(TestSlug::class);
     }
 
     protected function userRecord(): Attribute

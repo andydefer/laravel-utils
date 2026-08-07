@@ -12,7 +12,7 @@ use InvalidArgumentException;
 final class AttributeProxy
 {
     /**
-     * @template T of Transformable
+     * @template T of object
      *
      * @param  class-string<T>  $class
      * @param  callable(mixed, array<string, mixed>): mixed|null  $get
@@ -34,7 +34,7 @@ final class AttributeProxy
     }
 
     /**
-     * @template T of Transformable
+     * @template T of object
      *
      * @param  class-string<T>  $class
      * @param  callable(mixed, array<string, mixed>): mixed|null  $get
@@ -58,7 +58,7 @@ final class AttributeProxy
     /**
      * @deprecated Use required() or nullable() instead
      *
-     * @template T of Transformable
+     * @template T of object
      *
      * @param  class-string<T>  $class
      * @param  callable(mixed, array<string, mixed>): mixed|null  $get
@@ -80,7 +80,7 @@ final class AttributeProxy
     }
 
     /**
-     * Validate that the class implements Transformable interface.
+     * Validate that the class is either Transformable or an Enum.
      *
      * @param  class-string  $class
      *
@@ -88,9 +88,12 @@ final class AttributeProxy
      */
     private static function validateClass(string $class): void
     {
-        if (! is_subclass_of($class, Transformable::class)) {
+        $isTransformable = is_subclass_of($class, Transformable::class);
+        $isEnum = is_subclass_of($class, \UnitEnum::class);
+
+        if (! $isTransformable && ! $isEnum) {
             throw new InvalidArgumentException(sprintf(
-                'Class %s must implement Transformable interface.',
+                'Class %s must implement Transformable interface or be an Enum.',
                 $class
             ));
         }
@@ -120,6 +123,10 @@ final class AttributeProxy
                 return null;
             }
 
+            if (is_subclass_of($class, \UnitEnum::class)) {
+                return self::hydrateEnum($class, $rawValue);
+            }
+
             return TransformableProxy::make($class, $rawValue, $nullable);
         };
     }
@@ -136,30 +143,39 @@ final class AttributeProxy
         ?string $column,
         ?callable $set
     ): ?callable {
-        // Si pas de colonne, pas de set
         if ($column === null) {
             return null;
         }
 
-        // Si l'utilisateur a défini un set personnalisé
         if ($set !== null) {
             return $set;
         }
 
-        // Set par défaut
         return function ($value) use ($class, $column) {
             if ($value === null) {
                 return [$column => null];
             }
 
-            $transformed = $class::from($value);
-            $normalized = NormalizerChain::get()->normalize($transformed);
-
-            if (is_array($normalized) || is_object($normalized)) {
-                return [$column => json_encode($normalized)];
+            if ($value instanceof \UnitEnum) {
+                return [$column => $value->value];
             }
 
-            return [$column => $normalized];
+            if (is_subclass_of($class, Transformable::class)) {
+                $transformed = $class::from($value);
+                $normalized = NormalizerChain::get()->normalize($transformed);
+
+                if (is_array($normalized) || is_object($normalized)) {
+                    return [$column => json_encode($normalized)];
+                }
+
+                return [$column => $normalized];
+            }
+
+            if (is_array($value) || is_object($value)) {
+                return [$column => json_encode($value)];
+            }
+
+            return [$column => $value];
         };
     }
 
@@ -189,5 +205,33 @@ final class AttributeProxy
         json_decode($value);
 
         return json_last_error() === JSON_ERROR_NONE;
+    }
+
+    /**
+     * Hydrate an enum from a value.
+     *
+     * @param  class-string<\UnitEnum>  $class
+     */
+    private static function hydrateEnum(string $class, mixed $value): ?\UnitEnum
+    {
+        if ($value instanceof $class) {
+            return $value;
+        }
+
+        if (is_string($value) || is_int($value)) {
+            if (method_exists($class, 'from')) {
+                try {
+                    return $class::from($value);
+                } catch (\ValueError) {
+                    return null;
+                }
+            }
+
+            if (method_exists($class, 'tryFrom')) {
+                return $class::tryFrom($value);
+            }
+        }
+
+        return null;
     }
 }
