@@ -161,14 +161,23 @@ final class AttributeProxy
             }
 
             if (is_subclass_of($class, Transformable::class)) {
-                $transformed = $class::from($value);
-                $normalized = NormalizerChain::get()->normalize($transformed);
-
-                if (is_array($normalized) || is_object($normalized)) {
-                    return [$column => json_encode($normalized)];
+                $rawValue = $value;
+                if (is_string($rawValue) && self::isJson($rawValue)) {
+                    $rawValue = json_decode($rawValue, true);
                 }
 
-                return [$column => $normalized];
+                if (is_array($rawValue) || is_object($rawValue)) {
+                    $transformed = $class::from($rawValue);
+                    $normalized = NormalizerChain::get()->normalize($transformed);
+
+                    if (is_array($normalized) || is_object($normalized)) {
+                        return [$column => json_encode($normalized)];
+                    }
+
+                    return [$column => $normalized];
+                }
+
+                return [$column => $rawValue];
             }
 
             if (is_array($value) || is_object($value)) {

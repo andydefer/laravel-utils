@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AndyDefer\LaravelUtils\Tests\Fixtures\Models;
 
 use AndyDefer\LaravelUtils\Proxies\AttributeProxy;
+use AndyDefer\LaravelUtils\Tests\Fixtures\Collection\TestLanguageCollection;
 use AndyDefer\LaravelUtils\Tests\Fixtures\Enums\TestUserGrade;
 use AndyDefer\LaravelUtils\Tests\Fixtures\Enums\TestUserRole;
 use AndyDefer\LaravelUtils\Tests\Fixtures\Enums\TestUserStatus;
@@ -24,6 +25,7 @@ class TestUser extends Model
         'role',
         'grade',
         'slug',
+        'languages',
         'metadata',
     ];
 
@@ -31,16 +33,22 @@ class TestUser extends Model
         'status' => TestUserStatus::class,
         'role' => TestUserRole::class,
         'grade' => TestUserGrade::class,
+        'languages' => 'array',
         'metadata' => 'array',
     ];
 
     protected function slug(): Attribute
     {
-        return AttributeProxy::required(TestSlug::class);
+        return AttributeProxy::nullable(TestSlug::class);
     }
 
     protected function userRecord(): Attribute
     {
         return AttributeProxy::nullable(TestUserRecord::class, column: 'metadata');
+    }
+
+    protected function languages(): Attribute
+    {
+        return AttributeProxy::nullable(TestLanguageCollection::class, column: 'languages');
     }
 }
