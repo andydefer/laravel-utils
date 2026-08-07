@@ -161,11 +161,13 @@ final class AttributeProxy
             }
 
             if (is_subclass_of($class, Transformable::class)) {
+                // ✅ D'abord, décoder le JSON si c'est une chaîne
                 $rawValue = $value;
                 if (is_string($rawValue) && self::isJson($rawValue)) {
                     $rawValue = json_decode($rawValue, true);
                 }
 
+                // ✅ Si c'est déjà un tableau ou une collection, on hydrate
                 if (is_array($rawValue) || is_object($rawValue)) {
                     $transformed = $class::from($rawValue);
                     $normalized = NormalizerChain::get()->normalize($transformed);
@@ -177,6 +179,7 @@ final class AttributeProxy
                     return [$column => $normalized];
                 }
 
+                // ✅ Si c'est un scalaire, on le stocke tel quel
                 return [$column => $rawValue];
             }
 
@@ -220,8 +223,10 @@ final class AttributeProxy
      * Hydrate an enum from a value.
      *
      * @param  class-string<\UnitEnum>  $class
+     *
+     * @throws InvalidArgumentException
      */
-    private static function hydrateEnum(string $class, mixed $value): ?\UnitEnum
+    private static function hydrateEnum(string $class, mixed $value): \UnitEnum
     {
         if ($value instanceof $class) {
             return $value;
@@ -232,15 +237,19 @@ final class AttributeProxy
                 try {
                     return $class::from($value);
                 } catch (\ValueError) {
-                    return null;
                 }
             }
 
             if (method_exists($class, 'tryFrom')) {
-                return $class::tryFrom($value);
+                $enum = $class::tryFrom($value);
+                if ($enum !== null) {
+                    return $enum;
+                }
             }
         }
 
-        return null;
+        throw new InvalidArgumentException(
+            sprintf('Invalid value "%s" for enum %s', $value, $class)
+        );
     }
 }
