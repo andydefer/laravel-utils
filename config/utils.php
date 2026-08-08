@@ -1,7 +1,5 @@
 <?php
 
-use AndyDefer\LaravelUtils\Directives\O2switchDeployInfoDirective;
-
 return [
     /*
     |--------------------------------------------------------------------------
@@ -75,6 +73,29 @@ return [
         'remote_path' => env('DEPLOY_REMOTE_PATH', '~/sites/laravel-utils.com'),
         'git_branch' => env('DEPLOY_GIT_BRANCH', 'master'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Binary Path
+    |--------------------------------------------------------------------------
+    |
+    | The path to your application binary (relative to project root).
+    | Example: 'bin/afya' or 'bin/ut'
+    |
+    */
+    'binary_path' => env('DEPLOY_BINARY_PATH', 'bin/ut'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Export Tracker Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure the export tracker for tracking which files have been exported.
+    | TTL: 0 means never expire (infinite storage).
+    |
+    */
+    'export_tracker_base_path' => env('DEPLOY_EXPORT_TRACKER_PATH', 'storage/app/export_tracker'),
+    'export_tracker_ttl' => env('DEPLOY_EXPORT_TRACKER_TTL', 0),
 
     /*
     |--------------------------------------------------------------------------
@@ -157,21 +178,16 @@ return [
     |--------------------------------------------------------------------------
     |
     | Configure custom pipelines to execute after deployment.
-    | You can use either a string (runSignature) or an array [FQCN, argv].
+    | ⚠️ IMPORTANT: Only string signatures are supported!
     |
     | Examples:
     | 'pipelines' => [
-    |     // Simple string (runSignature)
-    |     'utils:support --all',
-    |     // Array with FQCN and args (runDirective)
-    |     [O2switchDeployInfoDirective::class, ['--verbose']]
+    |     'queue:restart',
+    |     'afya:seed --force',
     | ],
     |
     */
     'pipelines' => [
-
-        //  'utils:support --all',
-        // 'queue:restart',
-        [O2switchDeployInfoDirective::class, ['--verbose']],
+        'queue:restart',
     ],
 ];

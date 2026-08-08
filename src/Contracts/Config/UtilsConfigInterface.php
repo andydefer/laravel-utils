@@ -75,7 +75,28 @@ interface UtilsConfigInterface
     /**
      * Get the pipelines configuration.
      *
-     * @return array<int, string|array{0: string, 1?: array<string, mixed>}>
+     * @return array<int, string>
      */
     public function getPipelines(): array;
+
+    /**
+     * Get the binary path for executing directives (e.g., 'bin/afya' or 'bin/ut').
+     *
+     * @return string The binary path relative to the project root
+     */
+    public function getBinaryPath(): string;
+
+    /**
+     * Get the export tracker base path.
+     *
+     * @return string The base path for export tracker storage
+     */
+    public function getExportTrackerBasePath(): string;
+
+    /**
+     * Get the export tracker TTL in seconds (0 = infinite).
+     *
+     * @return int TTL in seconds, 0 means never expire
+     */
+    public function getExportTrackerTTL(): int;
 }

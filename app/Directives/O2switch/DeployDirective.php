@@ -19,6 +19,7 @@ use AndyDefer\LaravelUtils\Operations\SetupFrontendAssetsOperation;
 use AndyDefer\LaravelUtils\Operations\SetupLaravelOptimizationOperation;
 use AndyDefer\LaravelUtils\Operations\SetupStorageOperation;
 use AndyDefer\LaravelUtils\Records\DeploymentResultRecord;
+use AndyDefer\LaravelUtils\Services\ExportTrackerService;
 use AndyDefer\LaravelUtils\Services\SshService;
 use AndyDefer\LaravelUtils\UI\DeploymentUI;
 
@@ -90,6 +91,13 @@ final class DeployDirective extends AbstractDirective
         $skipExport = $this->getFlag('skip-export');
 
         $assets = $this->config->getExportAssets();
+        $trackerBasePath = $this->config->getExportTrackerBasePath();
+        $trackerTTL = $this->config->getExportTrackerTTL();
+
+        $tracker = new ExportTrackerService(
+            basePath: $trackerBasePath,
+            ttl: $trackerTTL
+        );
 
         DeploymentUI::displayConfiguration($this->console, $this->deploymentConfig);
 
@@ -161,10 +169,10 @@ final class DeployDirective extends AbstractDirective
                 $this->sshService,
                 $this->deploymentConfig['remote_path'],
                 $assets,
-                $force,
-                $forceExport,  // ← Nouveau flag
+                $forceExport,
                 $dryRun,
-                $this->console
+                $this->console,
+                $tracker
             );
 
             if (! $exportResult->success) {

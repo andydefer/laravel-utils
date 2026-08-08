@@ -20,7 +20,6 @@ final class ExecutePipelinesOperation
         ?Console $console = null
     ): DeploymentResultRecord {
         $commandsExecuted = [];
-
         $pipelines = $config->getPipelines();
 
         if (empty($pipelines)) {
@@ -41,9 +40,9 @@ final class ExecutePipelinesOperation
         }
 
         $globalSuccess = true;
-
-        // Construire la commande qui exécute les pipelines sur le serveur distant
         $remoteCommands = [];
+        $ignoredPipelines = [];
+        $binaryPath = $config->getBinaryPath();
 
         foreach ($pipelines as $index => $pipeline) {
             $pipelineNumber = $index + 1;
@@ -52,7 +51,6 @@ final class ExecutePipelinesOperation
                 $console->logInfo("📦 Pipeline {$pipelineNumber}/".count($pipelines));
             }
 
-            // Si c'est une string, on exécute via runSignature sur le remote
             if (is_string($pipeline)) {
                 if ($console) {
                     $console->logInfo("   📝 Executing on remote: {$pipeline}");
@@ -67,8 +65,7 @@ final class ExecutePipelinesOperation
                     continue;
                 }
 
-                // Commande à exécuter sur le serveur distant via SSH
-                $remoteCommand = "cd {$remotePath} && php bin/afya {$pipeline}";
+                $remoteCommand = "cd {$remotePath} && php {$binaryPath} {$pipeline}";
                 $remoteCommands[] = $remoteCommand;
 
                 if ($console) {
@@ -76,36 +73,12 @@ final class ExecutePipelinesOperation
                 }
             }
 
-            // Si c'est un tableau [fqcn, argv]
-            if (is_array($pipeline) && count($pipeline) >= 1) {
-                $fqcn = $pipeline[0];
-                $argv = $pipeline[1] ?? [];
-
+            if (is_array($pipeline)) {
+                $ignoredPipelines[] = $pipeline;
                 if ($console) {
-                    $console->logInfo("   📝 Executing on remote: {$fqcn} with args: ".json_encode($argv));
-                }
-
-                if ($dryRun) {
-                    if ($console) {
-                        $console->logInfo("   🔍 DRY RUN: Would execute: {$fqcn}");
-                    }
-                    $commandsExecuted[] = "pipeline: {$fqcn} (dry-run)";
-
-                    continue;
-                }
-
-                // Construire la commande avec les arguments
-                $argsString = '';
-                if (! empty($argv)) {
-                    $argsString = ' '.implode(' ', array_map('escapeshellarg', $argv));
-                }
-
-                // Commande à exécuter sur le serveur distant via SSH
-                $remoteCommand = "cd {$remotePath} && php bin/afya {$fqcn}{$argsString}";
-                $remoteCommands[] = $remoteCommand;
-
-                if ($console) {
-                    $console->logInfo("   📤 Command: {$remoteCommand}");
+                    $fqcn = $pipeline[0] ?? 'unknown';
+                    $console->logWarning("   ⚠️ Ignored pipeline (array format not supported): {$fqcn}");
+                    $console->logWarning('   💡 Please use signature format instead, e.g.: "afya:seed --force"');
                 }
             }
 
@@ -114,7 +87,12 @@ final class ExecutePipelinesOperation
             }
         }
 
-        // Si on est en dry-run, on s'arrête là
+        if (! empty($ignoredPipelines) && $console) {
+            $console->logWarning('⚠️  '.count($ignoredPipelines).' pipeline(s) were ignored because they use array format');
+            $console->logWarning('   💡 Only string signatures are supported');
+            $console->line();
+        }
+
         if ($dryRun) {
             return DeploymentResultRecord::from([
                 'success' => true,
@@ -123,9 +101,7 @@ final class ExecutePipelinesOperation
             ]);
         }
 
-        // Exécuter toutes les commandes en une seule session SSH
         if (! empty($remoteCommands)) {
-            // Option 1: Exécuter chaque commande une par une
             foreach ($remoteCommands as $index => $command) {
                 if ($console) {
                     $console->logInfo('   🚀 Executing pipeline '.($index + 1).'/'.count($remoteCommands));

@@ -433,7 +433,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
     }
 
     // ============================================================
-    // TESTS POUR ExportAssetsOperation - MIS À JOUR
+    // TESTS POUR ExportAssetsOperation
     // ============================================================
 
     public function test_deploy_includes_assets_export_in_dry_run(): void
@@ -444,9 +444,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('rsync -avz assets to', $response->output);
-        // Vérifier le nouveau message de skip
-        $this->assertStringContainsString('📝 Will skip existing files', $response->output);
-        // Vérifier que l'ancien message n'est plus présent
+        $this->assertStringContainsString('📝 Will skip existing files (tracker enabled)', $response->output);
         $this->assertStringNotContainsString('images:compress (would compress images)', $response->output);
     }
 
@@ -476,7 +474,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('rsync -avz assets to', $response->output);
-        $this->assertStringContainsString('📝 Will skip existing files', $response->output);
+        $this->assertStringContainsString('📝 Will skip existing files (tracker enabled)', $response->output);
         $this->assertStringNotContainsString('images:compress (would compress images)', $response->output);
     }
 
@@ -488,7 +486,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('rsync -avz assets to', $response->output);
-        $this->assertStringContainsString('📝 Will skip existing files', $response->output);
+        $this->assertStringContainsString('📝 Will skip existing files (tracker enabled)', $response->output);
     }
 
     public function test_deploy_assets_with_all_flags_in_dry_run(): void
@@ -505,7 +503,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
     }
 
     // ============================================================
-    // TESTS POUR ExecutePipelinesOperation
+    // TESTS POUR ExecutePipelinesOperation - UNIQUEMENT STRINGS
     // ============================================================
 
     public function test_deploy_executes_pipelines_from_config(): void
@@ -540,40 +538,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('Would execute: ping', $response->output);
         $this->assertStringContainsString('Would execute: ping --delay=1', $response->output);
-    }
-
-    public function test_deploy_executes_pipeline_with_fqcn_and_args(): void
-    {
-        Config::set('utils.pipelines', [
-            [PingDirective::class, ['1']],
-        ]);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
-    }
-
-    public function test_deploy_executes_pipeline_with_mixed_types(): void
-    {
-        Config::set('utils.pipelines', [
-            'ping',
-            [PingDirective::class, []],
-        ]);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('Would execute: ping', $response->output);
-        $this->assertStringContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
     }
 
     public function test_deploy_skips_pipelines_when_not_configured(): void
@@ -636,5 +600,85 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('Would execute: ping', $response->output);
         $this->assertStringContainsString('Skipping assets export', $response->output);
+    }
+
+    // ============================================================
+    // TESTS POUR LES PIPELINES IGNORÉES (FORMAT TABLEAU NON SUPPORTÉ)
+    // ============================================================
+
+    public function test_deploy_ignores_pipeline_with_fqcn_array_format(): void
+    {
+        Config::set('utils.pipelines', [
+            [PingDirective::class, ['1']],
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('⚠️ Ignored pipeline (array format not supported)', $response->output);
+        $this->assertStringContainsString('Only string signatures are supported', $response->output);
+        $this->assertStringNotContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
+    }
+
+    public function test_deploy_ignores_mixed_pipelines_and_executes_strings(): void
+    {
+        Config::set('utils.pipelines', [
+            'ping',
+            [PingDirective::class, []],
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: ping', $response->output);
+        $this->assertStringContainsString('Ignored pipeline (array format not supported)', $response->output);
+        $this->assertStringContainsString('1 pipeline(s) were ignored because they use array format', $response->output);
+        $this->assertStringNotContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
+    }
+
+    public function test_deploy_summary_shows_pipeline_ignored_warning(): void
+    {
+        Config::set('utils.pipelines', [
+            [PingDirective::class, ['1']],
+            [PingDirective::class, ['2']],
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('2 pipeline(s) were ignored because they use array format', $response->output);
+        $this->assertStringContainsString('Only string signatures are supported', $response->output);
+    }
+
+    public function test_deploy_ignores_pipeline_with_array_format_and_continues_with_other_pipelines(): void
+    {
+        Config::set('utils.pipelines', [
+            [PingDirective::class, ['1']],
+            'ping --delay=1',
+            [PingDirective::class, ['2']],
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: ping --delay=1', $response->output);
+        $this->assertStringContainsString('2 pipeline(s) were ignored because they use array format', $response->output);
+        $this->assertStringNotContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
     }
 }

@@ -11,6 +11,7 @@ use AndyDefer\ConsoleWriter\Console\Services\VirtualTerminalService;
 use AndyDefer\DomainStructures\Utils\MapCollection;
 use AndyDefer\LaravelUtils\Enums\FileSizeUnit;
 use AndyDefer\LaravelUtils\Records\DeploymentResultRecord;
+use AndyDefer\LaravelUtils\Services\ExportTrackerService;
 use AndyDefer\LaravelUtils\Services\SshService;
 use AndyDefer\PhpServices\Services\FileSystemService;
 
@@ -32,10 +33,10 @@ final class ExportAssetsOperation
         SshService $sshService,
         string $remotePath,
         array $assets,
-        bool $force,
         bool $forceExport,
         bool $dryRun,
-        ?Console $console = null
+        ?Console $console = null,
+        ?ExportTrackerService $tracker = null
     ): DeploymentResultRecord {
         $commandsExecuted = [];
 
@@ -46,7 +47,7 @@ final class ExportAssetsOperation
                 if ($forceExport) {
                     echo Logger::info('   🧹 Force export: will overwrite existing files')."\n";
                 } else {
-                    echo Logger::info('   📝 Will skip existing files')."\n";
+                    echo Logger::info('   📝 Will skip existing files (tracker enabled)')."\n";
                 }
                 echo "\n";
             }
@@ -63,7 +64,7 @@ final class ExportAssetsOperation
             if ($forceExport) {
                 echo Logger::info('🧹 Force export mode: will overwrite existing files')."\n";
             } else {
-                echo Logger::info('📝 Skip mode: will skip existing files')."\n";
+                echo Logger::info('📝 Skip mode: will skip already exported files (tracker enabled)')."\n";
             }
             echo "\n";
         }
@@ -83,6 +84,8 @@ final class ExportAssetsOperation
         $skippedAssets = 0;
         $existingFilesSkipped = 0;
 
+        $useTracker = $tracker !== null && ! $forceExport;
+
         foreach ($assets as $asset) {
             $sourcePath = getcwd().'/'.$asset;
             $assetName = $asset;
@@ -95,26 +98,6 @@ final class ExportAssetsOperation
                 $skippedAssets++;
 
                 continue;
-            }
-
-            // Vérifier si le dossier distant existe déjà
-            $remoteDirExists = self::remoteDirectoryExists($sshService, $remoteAssetPath);
-
-            if (! $remoteDirExists) {
-                // Créer le dossier seulement s'il n'existe pas
-                self::createRemoteDirectory($sshService, $remoteAssetPath, $console);
-            } else {
-                if ($console) {
-                    echo Logger::info("📁 Remote directory exists: {$remoteAssetPath}")."\n";
-
-                    // Si forceExport est activé, nettoyer le dossier
-                    if ($forceExport) {
-                        echo Logger::info('🧹 Force export: cleaning existing directory...')."\n";
-                        self::cleanRemoteDirectory($sshService, $remoteAssetPath, $console);
-                    } else {
-                        echo Logger::info('   💡 Skipping existing files (use --force-export to overwrite)')."\n";
-                    }
-                }
             }
 
             if ($console) {
@@ -147,7 +130,6 @@ final class ExportAssetsOperation
             $sizeAfter = self::getDirectorySize($fileSystem, $assetTempDir);
             $totalSizeAfter += $sizeAfter;
 
-            // Upload FICHIER PAR FICHIER vers le dossier cible
             $uploadResult = self::uploadDirectoryFiles(
                 $fileSystem,
                 $sshService,
@@ -155,7 +137,8 @@ final class ExportAssetsOperation
                 $remoteAssetPath,
                 $asset,
                 $console,
-                $forceExport  // ← Passer le flag forceExport
+                $forceExport,
+                $useTracker ? $tracker : null
             );
 
             $commandsExecuted[] = "scp {$asset} to server";
@@ -174,6 +157,9 @@ final class ExportAssetsOperation
                 echo Logger::success("✅ Asset uploaded: {$asset}")."\n";
                 if ($uploadResult['skipped'] > 0) {
                     echo Logger::info("   ⏭️  Skipped: {$uploadResult['skipped']} existing files")."\n";
+                }
+                if ($uploadResult['newly_exported'] > 0) {
+                    echo Logger::info("   ✨ Newly exported: {$uploadResult['newly_exported']} files")."\n";
                 }
                 $saved = $sizeBefore - $sizeAfter;
                 if ($saved > 0) {
@@ -211,34 +197,6 @@ final class ExportAssetsOperation
         ]);
     }
 
-    private static function remoteDirectoryExists(SshService $sshService, string $remotePath): bool
-    {
-        $command = "ssh {$sshService->getSshKey()} 'test -d {$remotePath} && echo \"EXISTS\"'";
-        exec($command, $output, $returnCode);
-
-        return $returnCode === 0 && isset($output[0]) && $output[0] === 'EXISTS';
-    }
-
-    private static function cleanRemoteDirectory(SshService $sshService, string $remotePath, ?Console $console): void
-    {
-        if ($console) {
-            echo Logger::info('🧹 Cleaning remote directory: '.$remotePath)."\n";
-        }
-
-        $command = "ssh {$sshService->getSshKey()} 'rm -rf {$remotePath}/*'";
-        exec($command, $output, $returnCode);
-
-        if ($returnCode === 0) {
-            if ($console) {
-                echo Logger::success('✅ Remote directory cleaned')."\n";
-            }
-        } else {
-            if ($console) {
-                echo Logger::warning('⚠️  Could not clean remote directory, continuing...')."\n";
-            }
-        }
-    }
-
     private static function uploadDirectoryFiles(
         FileSystemService $fileSystem,
         SshService $sshService,
@@ -246,11 +204,13 @@ final class ExportAssetsOperation
         string $remotePath,
         string $assetName,
         ?Console $console,
-        bool $forceExport = false
+        bool $forceExport = false,
+        ?ExportTrackerService $tracker = null
     ): array {
         $result = [
             'success' => true,
             'skipped' => 0,
+            'newly_exported' => 0,
         ];
 
         if ($console && self::$vt) {
@@ -263,7 +223,6 @@ final class ExportAssetsOperation
             self::$lastRenderTime = microtime(true) * 1000000;
         }
 
-        // Récupérer tous les fichiers du dossier source
         $files = [];
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($sourceDir, \RecursiveDirectoryIterator::SKIP_DOTS)
@@ -282,33 +241,22 @@ final class ExportAssetsOperation
         $totalFiles = count($files);
         $copiedFiles = 0;
 
-        // Upload fichier par fichier via scp
         foreach ($files as $file) {
             $remoteDir = dirname($file['remote']);
             $copiedFiles++;
 
-            // Créer le dossier distant si nécessaire
-            $createDirCmd = "ssh {$sshService->getSshKey()} 'mkdir -p {$remoteDir}'";
-            exec($createDirCmd);
-
-            // Vérifier si le fichier existe déjà sur le serveur
-            $remoteFileExists = false;
-            if (! $forceExport) {
-                $checkCmd = "ssh {$sshService->getSshKey()} 'test -f {$file['remote']} && echo \"EXISTS\"'";
-                exec($checkCmd, $checkOutput, $checkReturn);
-                $remoteFileExists = $checkReturn === 0 && isset($checkOutput[0]) && $checkOutput[0] === 'EXISTS';
-            }
-
-            if ($remoteFileExists) {
+            if ($tracker !== null && $tracker->isExported($file['relative'])) {
                 $result['skipped']++;
                 if ($console) {
-                    echo Logger::info("   ⏭️  Skipping existing file: {$file['relative']}")."\n";
+                    echo Logger::info("   ⏭️  Skipping (already exported): {$file['relative']}")."\n";
                 }
 
                 continue;
             }
 
-            // Upload du fichier
+            $createDirCmd = "ssh {$sshService->getSshKey()} 'mkdir -p {$remoteDir}'";
+            exec($createDirCmd);
+
             $scpCmd = "scp {$file['local']} {$sshService->getSshKey()}:{$file['remote']}";
             exec($scpCmd, $output, $returnCode);
 
@@ -328,6 +276,11 @@ final class ExportAssetsOperation
                 $result['success'] = false;
 
                 return $result;
+            }
+
+            if ($tracker !== null) {
+                $tracker->markAsExported($file['relative']);
+                $result['newly_exported']++;
             }
         }
 
@@ -363,28 +316,6 @@ final class ExportAssetsOperation
         if ($now - self::$lastRenderTime >= self::RENDER_INTERVAL) {
             self::$vt->render();
             self::$lastRenderTime = $now;
-        }
-    }
-
-    private static function createRemoteDirectory(SshService $sshService, string $remotePath, ?Console $console): void
-    {
-        if ($console) {
-            echo Logger::info('📁 Creating remote directory: '.$remotePath)."\n";
-        }
-
-        $command = "ssh {$sshService->getSshKey()} 'mkdir -p {$remotePath}'";
-        exec($command, $output, $returnCode);
-
-        if ($returnCode === 0) {
-            if ($console) {
-                echo Logger::success('✅ Remote directory created')."\n";
-                echo "\n";
-            }
-        } else {
-            if ($console) {
-                echo Logger::warning('⚠️  Could not create remote directory, continuing...')."\n";
-                echo "\n";
-            }
         }
     }
 

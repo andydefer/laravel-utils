@@ -80,6 +80,12 @@ final class UtilsConfig implements UtilsConfigInterface
 
     private const DEFAULT_PIPELINES = [];
 
+    private const DEFAULT_BINARY_PATH = 'bin/ut';
+
+    private const DEFAULT_EXPORT_TRACKER_BASE_PATH = 'storage/app/export_tracker';
+
+    private const DEFAULT_EXPORT_TRACKER_TTL = 0;
+
     private const DEFAULT_HLS_CONFIG = [
         'segment_duration' => 4,
         'crf' => 28,
@@ -213,5 +219,26 @@ final class UtilsConfig implements UtilsConfigInterface
         $pipelines = $this->config->get('utils.pipelines', self::DEFAULT_PIPELINES);
 
         return is_array($pipelines) ? $pipelines : [];
+    }
+
+    public function getBinaryPath(): string
+    {
+        $binaryPath = $this->config->get('utils.binary_path', self::DEFAULT_BINARY_PATH);
+
+        return is_string($binaryPath) ? $binaryPath : self::DEFAULT_BINARY_PATH;
+    }
+
+    public function getExportTrackerBasePath(): string
+    {
+        $path = $this->config->get('utils.export_tracker_base_path', self::DEFAULT_EXPORT_TRACKER_BASE_PATH);
+
+        return is_string($path) ? $path : self::DEFAULT_EXPORT_TRACKER_BASE_PATH;
+    }
+
+    public function getExportTrackerTTL(): int
+    {
+        $ttl = $this->config->get('utils.export_tracker_ttl', self::DEFAULT_EXPORT_TRACKER_TTL);
+
+        return is_int($ttl) ? $ttl : self::DEFAULT_EXPORT_TRACKER_TTL;
     }
 }
