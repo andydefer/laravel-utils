@@ -5,9 +5,6 @@ return [
     |--------------------------------------------------------------------------
     | Git Repositories
     |--------------------------------------------------------------------------
-    |
-    | Configure your Git repositories for push directives.
-    |
     */
     'repositories' => [
         'github' => 'git@github.com:andydefer/laravel-utils.git',
@@ -17,9 +14,6 @@ return [
     |--------------------------------------------------------------------------
     | File Extensions
     |--------------------------------------------------------------------------
-    |
-    | Default extensions for git diff and extension recipes.
-    |
     */
     'default_extensions' => [
         'php',
@@ -64,9 +58,6 @@ return [
     |--------------------------------------------------------------------------
     | Deployment Configuration
     |--------------------------------------------------------------------------
-    |
-    | Configure your deployment settings for O2Switch.
-    |
     */
     'deployment' => [
         'ssh_key' => env('DEPLOY_SSH_KEY', 'o2switch'),
@@ -78,10 +69,6 @@ return [
     |--------------------------------------------------------------------------
     | Binary Path
     |--------------------------------------------------------------------------
-    |
-    | The path to your application binary (relative to project root).
-    | Example: 'bin/afya' or 'bin/ut'
-    |
     */
     'binary_path' => env('DEPLOY_BINARY_PATH', 'bin/ut'),
 
@@ -89,10 +76,6 @@ return [
     |--------------------------------------------------------------------------
     | Export Tracker Configuration
     |--------------------------------------------------------------------------
-    |
-    | Configure the export tracker for tracking which files have been exported.
-    | TTL: 0 means never expire (infinite storage).
-    |
     */
     'export_tracker_base_path' => env('DEPLOY_EXPORT_TRACKER_PATH', 'storage/app/export_tracker'),
     'export_tracker_ttl' => env('DEPLOY_EXPORT_TRACKER_TTL', 0),
@@ -101,9 +84,6 @@ return [
     |--------------------------------------------------------------------------
     | Publish Configuration
     |--------------------------------------------------------------------------
-    |
-    | Configure source and target paths for publishing directives.
-    |
     */
     'publish_source' => 'app/Directives',
     'publish_target' => 'app/Directives',
@@ -112,9 +92,6 @@ return [
     |--------------------------------------------------------------------------
     | Export Assets Configuration
     |--------------------------------------------------------------------------
-    |
-    | Configure assets to export during deployment.
-    |
     */
     'export_assets' => [
         'storage/app/public/images',
@@ -124,60 +101,8 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | HLS Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Configure HLS generation settings for videos:hls directive.
-    |
-    */
-    'hls' => [
-        'segment_duration' => 4,
-        'crf' => 28,
-        'preset' => 'fast',
-        'audio_bitrate' => '128k',
-        'resolutions' => ['144', '240', '360', '480', '720'],
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Video Compression Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Configure video compression settings for videos:compress directive.
-    |
-    */
-    'video_compress' => [
-        'width' => 0,
-        'height' => 0,
-        'crf' => 28,
-        'preset' => 'medium',
-        'video_codec' => 'libx264',
-        'audio_codec' => 'aac',
-        'audio_bitrate' => '128k',
-        'pixel_format' => 'yuv420p',
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Image Compression Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Configure image compression settings for images:compress directive.
-    |
-    */
-    'image_compress' => [
-        'png_quality' => '45-50',
-        'jpg_quality' => 50,
-        'max_size' => 0,
-        'strip_meta' => false,
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
     | Pipelines Configuration
     |--------------------------------------------------------------------------
-    |
-    | Configure custom pipelines to execute after deployment.
     | ⚠️ IMPORTANT: Only string signatures are supported!
     |
     | Examples:
@@ -185,9 +110,8 @@ return [
     |     'queue:restart',
     |     'afya:seed --force',
     | ],
-    |
     */
     'pipelines' => [
-        'queue:restart',
+        'utils:support --all',
     ],
 ];

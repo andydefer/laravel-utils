@@ -52,27 +52,6 @@ interface UtilsConfigInterface
     public function getExportAssets(): array;
 
     /**
-     * Get the HLS configuration.
-     *
-     * @return array{segment_duration: int, crf: int, preset: string, audio_bitrate: string, resolutions: array<string>}
-     */
-    public function getHlsConfig(): array;
-
-    /**
-     * Get the video compression configuration.
-     *
-     * @return array{width: int, height: int, crf: int, preset: string, video_codec: string, audio_codec: string, audio_bitrate: string, pixel_format: string}
-     */
-    public function getVideoCompressConfig(): array;
-
-    /**
-     * Get the image compression configuration.
-     *
-     * @return array{png_quality: string, jpg_quality: int, max_size: int, strip_meta: bool}
-     */
-    public function getImageCompressConfig(): array;
-
-    /**
      * Get the pipelines configuration.
      *
      * @return array<int, string>

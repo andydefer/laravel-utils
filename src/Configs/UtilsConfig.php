@@ -86,32 +86,6 @@ final class UtilsConfig implements UtilsConfigInterface
 
     private const DEFAULT_EXPORT_TRACKER_TTL = 0;
 
-    private const DEFAULT_HLS_CONFIG = [
-        'segment_duration' => 4,
-        'crf' => 28,
-        'preset' => 'fast',
-        'audio_bitrate' => '128k',
-        'resolutions' => ['144', '240', '360', '480', '720'],
-    ];
-
-    private const DEFAULT_VIDEO_COMPRESS_CONFIG = [
-        'width' => 0,
-        'height' => 0,
-        'crf' => 28,
-        'preset' => 'medium',
-        'video_codec' => 'libx264',
-        'audio_codec' => 'aac',
-        'audio_bitrate' => '128k',
-        'pixel_format' => 'yuv420p',
-    ];
-
-    private const DEFAULT_IMAGE_COMPRESS_CONFIG = [
-        'png_quality' => '45-50',
-        'jpg_quality' => 50,
-        'max_size' => 0,
-        'strip_meta' => false,
-    ];
-
     public function __construct(
         private readonly ConfigRepository $config,
     ) {}
@@ -191,27 +165,6 @@ final class UtilsConfig implements UtilsConfigInterface
         $assets = $this->config->get('utils.export_assets', self::DEFAULT_EXPORT_ASSETS);
 
         return is_array($assets) ? $assets : [];
-    }
-
-    public function getHlsConfig(): array
-    {
-        $config = $this->config->get('utils.hls', self::DEFAULT_HLS_CONFIG);
-
-        return is_array($config) ? array_merge(self::DEFAULT_HLS_CONFIG, $config) : self::DEFAULT_HLS_CONFIG;
-    }
-
-    public function getVideoCompressConfig(): array
-    {
-        $config = $this->config->get('utils.video_compress', self::DEFAULT_VIDEO_COMPRESS_CONFIG);
-
-        return is_array($config) ? array_merge(self::DEFAULT_VIDEO_COMPRESS_CONFIG, $config) : self::DEFAULT_VIDEO_COMPRESS_CONFIG;
-    }
-
-    public function getImageCompressConfig(): array
-    {
-        $config = $this->config->get('utils.image_compress', self::DEFAULT_IMAGE_COMPRESS_CONFIG);
-
-        return is_array($config) ? array_merge(self::DEFAULT_IMAGE_COMPRESS_CONFIG, $config) : self::DEFAULT_IMAGE_COMPRESS_CONFIG;
     }
 
     public function getPipelines(): array
