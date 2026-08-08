@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace AndyDefer\LaravelUtils\Operations;
 
 use AndyDefer\ConsoleWriter\Console\Console;
-use AndyDefer\Directive\DirectiveKernel;
-use AndyDefer\Directive\Enums\ExitCode;
 use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
 use AndyDefer\LaravelUtils\Contracts\Config\UtilsConfigInterface;
 use AndyDefer\LaravelUtils\Records\DeploymentResultRecord;
@@ -17,7 +15,6 @@ final class ExecutePipelinesOperation
     public static function handle(
         SshService $sshService,
         string $remotePath,
-        DirectiveKernel $kernel,
         UtilsConfigInterface $config,
         bool $dryRun = false,
         ?Console $console = null
@@ -39,11 +36,14 @@ final class ExecutePipelinesOperation
         }
 
         if ($console) {
-            $console->logInfo('🔧 Executing '.count($pipelines).' pipeline(s)...');
+            $console->logInfo('🔧 Executing '.count($pipelines).' pipeline(s) on remote server...');
             $console->line();
         }
 
         $globalSuccess = true;
+
+        // Construire la commande qui exécute les pipelines sur le serveur distant
+        $remoteCommands = [];
 
         foreach ($pipelines as $index => $pipeline) {
             $pipelineNumber = $index + 1;
@@ -52,10 +52,10 @@ final class ExecutePipelinesOperation
                 $console->logInfo("📦 Pipeline {$pipelineNumber}/".count($pipelines));
             }
 
-            // Si c'est une string, on exécute via runSignature
+            // Si c'est une string, on exécute via runSignature sur le remote
             if (is_string($pipeline)) {
                 if ($console) {
-                    $console->logInfo("   📝 Executing: {$pipeline}");
+                    $console->logInfo("   📝 Executing on remote: {$pipeline}");
                 }
 
                 if ($dryRun) {
@@ -67,19 +67,12 @@ final class ExecutePipelinesOperation
                     continue;
                 }
 
-                $result = $kernel->runSignature($pipeline);
-                $commandsExecuted[] = "pipeline: {$pipeline}";
-
-                if ($result !== ExitCode::SUCCESS) {
-                    $globalSuccess = false;
-                    if ($console) {
-                        $console->logError("   ❌ Pipeline failed: {$pipeline}");
-                    }
-                    break;
-                }
+                // Commande à exécuter sur le serveur distant via SSH
+                $remoteCommand = "cd {$remotePath} && php bin/afya {$pipeline}";
+                $remoteCommands[] = $remoteCommand;
 
                 if ($console) {
-                    $console->logSuccess("   ✅ Pipeline completed: {$pipeline}");
+                    $console->logInfo("   📤 Command: {$remoteCommand}");
                 }
             }
 
@@ -89,7 +82,7 @@ final class ExecutePipelinesOperation
                 $argv = $pipeline[1] ?? [];
 
                 if ($console) {
-                    $console->logInfo("   📝 Executing: {$fqcn} with args: ".json_encode($argv));
+                    $console->logInfo("   📝 Executing on remote: {$fqcn} with args: ".json_encode($argv));
                 }
 
                 if ($dryRun) {
@@ -101,19 +94,18 @@ final class ExecutePipelinesOperation
                     continue;
                 }
 
-                $result = $kernel->runDirective($fqcn, $argv);
-                $commandsExecuted[] = "pipeline: {$fqcn}";
-
-                if ($result !== ExitCode::SUCCESS) {
-                    $globalSuccess = false;
-                    if ($console) {
-                        $console->logError("   ❌ Pipeline failed: {$fqcn}");
-                    }
-                    break;
+                // Construire la commande avec les arguments
+                $argsString = '';
+                if (! empty($argv)) {
+                    $argsString = ' '.implode(' ', array_map('escapeshellarg', $argv));
                 }
 
+                // Commande à exécuter sur le serveur distant via SSH
+                $remoteCommand = "cd {$remotePath} && php bin/afya {$fqcn}{$argsString}";
+                $remoteCommands[] = $remoteCommand;
+
                 if ($console) {
-                    $console->logSuccess("   ✅ Pipeline completed: {$fqcn}");
+                    $console->logInfo("   📤 Command: {$remoteCommand}");
                 }
             }
 
@@ -122,11 +114,51 @@ final class ExecutePipelinesOperation
             }
         }
 
+        // Si on est en dry-run, on s'arrête là
+        if ($dryRun) {
+            return DeploymentResultRecord::from([
+                'success' => true,
+                'message' => 'Dry-run completed',
+                'commands_executed' => StringTypedCollection::from($commandsExecuted),
+            ]);
+        }
+
+        // Exécuter toutes les commandes en une seule session SSH
+        if (! empty($remoteCommands)) {
+            // Option 1: Exécuter chaque commande une par une
+            foreach ($remoteCommands as $index => $command) {
+                if ($console) {
+                    $console->logInfo('   🚀 Executing pipeline '.($index + 1).'/'.count($remoteCommands));
+                }
+
+                $result = $sshService->execute($command, false);
+
+                if ($console && ! empty($result->output)) {
+                    $console->line('   📤 Output:');
+                    $console->line($result->output);
+                }
+
+                if (! $result->success) {
+                    $globalSuccess = false;
+                    if ($console) {
+                        $console->logError("   ❌ Pipeline failed: {$command}");
+                        $console->logError('   ❌ Error: '.($result->error ?? 'Unknown error'));
+                    }
+                    break;
+                }
+
+                $commandsExecuted[] = "pipeline: {$command}";
+                if ($console) {
+                    $console->logSuccess('   ✅ Pipeline completed');
+                }
+            }
+        }
+
         if ($console) {
             if ($globalSuccess) {
-                $console->logSuccess('✅ All pipelines executed successfully');
+                $console->logSuccess('✅ All pipelines executed successfully on remote server');
             } else {
-                $console->logError('❌ Some pipelines failed');
+                $console->logError('❌ Some pipelines failed on remote server');
             }
             $console->line();
         }

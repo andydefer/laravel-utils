@@ -38,8 +38,7 @@ final class DeployDirective extends AbstractDirective
                 {--force}#"Skip confirmation and force deployment"
                 {--verbose}#"Show detailed output"
                 {--dry-run}#"Simulate the operation without actually executing"
-                {--no-compress}#"Skip compression of assets before export"
-                {--hls}#"Generate HLS streams for videos before export"
+                {--force-export}#"Force export: overwrite existing files on remote"
                 {--skip-export}#"Skip assets export step"';
     }
 
@@ -87,8 +86,7 @@ final class DeployDirective extends AbstractDirective
     {
         $dryRun = $this->getFlag('dry-run');
         $force = $this->getFlag('force');
-        $noCompress = $this->getFlag('no-compress');
-        $hls = $this->getFlag('hls');
+        $forceExport = $this->getFlag('force-export');
         $skipExport = $this->getFlag('skip-export');
 
         $assets = $this->config->getExportAssets();
@@ -164,12 +162,9 @@ final class DeployDirective extends AbstractDirective
                 $this->deploymentConfig['remote_path'],
                 $assets,
                 $force,
-                $noCompress,
-                $hls,
+                $forceExport,  // ← Nouveau flag
                 $dryRun,
-                $this->console,
-                $this->getKernel(),
-                $this->config
+                $this->console
             );
 
             if (! $exportResult->success) {
@@ -227,7 +222,6 @@ final class DeployDirective extends AbstractDirective
         $pipelinesResult = ExecutePipelinesOperation::handle(
             $this->sshService,
             $this->deploymentConfig['remote_path'],
-            $this->getKernel(),
             $this->config,
             $dryRun,
             $this->console

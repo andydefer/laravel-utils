@@ -13,13 +13,6 @@ use AndyDefer\LaravelUtils\Tests\IntegrationTestCase;
 use App\Directives\O2switch\DeployDirective;
 use Illuminate\Support\Facades\Config;
 
-/**
- * Integration tests for the DeployDirective.
- *
- * @group integration
- * @group directives
- * @group deploy
- */
 final class DeployDirectiveTest extends IntegrationTestCase
 {
     private DirectiveTestingService $service;
@@ -34,12 +27,10 @@ final class DeployDirectiveTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        // Save original configurations
         $this->originalDeploymentConfig = config('utils.deployment', []);
         $this->originalExportAssets = config('utils.export_assets', []);
         $this->originalPipelines = config('utils.pipelines', []);
 
-        // Default test config
         Config::set('utils.deployment', [
             'ssh_key' => 'test-server',
             'remote_path' => '~/sites/test-app.com',
@@ -61,7 +52,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
             application: $this->app,
             sourcePaths: [__DIR__.'/../../Fixtures/Directives']
         );
-
         $kernel = $this->service->getKernel();
         $kernel->addDirective(DeployDirective::class);
         $kernel->addDirective(PingDirective::class);
@@ -69,7 +59,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        // Restore original configurations
         Config::set('utils.deployment', $this->originalDeploymentConfig);
         Config::set('utils.export_assets', $this->originalExportAssets);
         Config::set('utils.pipelines', $this->originalPipelines);
@@ -293,10 +282,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('✅ Dry run completed successfully!', $response->output);
     }
 
-    // ============================================================
-    // TESTS POUR SetupEnvironmentOperation
-    // ============================================================
-
     public function test_deploy_includes_environment_setup_in_dry_run(): void
     {
         $command = 'o2switch:deploy --dry-run';
@@ -319,10 +304,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('.env.example', $response->output);
         $this->assertStringContainsString('php artisan key:generate', $response->output);
     }
-
-    // ============================================================
-    // TESTS POUR SetupDependenciesOperation
-    // ============================================================
 
     public function test_deploy_includes_dependencies_setup_in_dry_run(): void
     {
@@ -347,10 +328,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('composer install', $response->output);
         $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $response->output);
     }
-
-    // ============================================================
-    // TESTS POUR SetupFrontendAssetsOperation
-    // ============================================================
 
     public function test_deploy_includes_frontend_assets_setup_in_dry_run(): void
     {
@@ -383,10 +360,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('test -f public/build/manifest.json', $response->output);
     }
 
-    // ============================================================
-    // TESTS POUR SetupStorageOperation
-    // ============================================================
-
     public function test_deploy_includes_storage_setup_in_dry_run(): void
     {
         $command = 'o2switch:deploy --dry-run';
@@ -416,10 +389,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('php artisan storage:link', $response->output);
         $this->assertStringContainsString('(Check and create storage symbolic links)', $response->output);
     }
-
-    // ============================================================
-    // TESTS POUR SetupLaravelOptimizationOperation
-    // ============================================================
 
     public function test_deploy_includes_laravel_optimization_in_dry_run(): void
     {
@@ -464,7 +433,7 @@ final class DeployDirectiveTest extends IntegrationTestCase
     }
 
     // ============================================================
-    // TESTS POUR ExportAssetsOperation (via config)
+    // TESTS POUR ExportAssetsOperation - MIS À JOUR
     // ============================================================
 
     public function test_deploy_includes_assets_export_in_dry_run(): void
@@ -475,27 +444,22 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('rsync -avz assets to', $response->output);
-        $this->assertStringContainsString('images:compress (would compress images)', $response->output);
+        // Vérifier le nouveau message de skip
+        $this->assertStringContainsString('📝 Will skip existing files', $response->output);
+        // Vérifier que l'ancien message n'est plus présent
+        $this->assertStringNotContainsString('images:compress (would compress images)', $response->output);
     }
 
-    public function test_deploy_assets_with_hls_flag_in_dry_run(): void
+    public function test_deploy_assets_with_force_export_flag_in_dry_run(): void
     {
-        $command = 'o2switch:deploy --dry-run --hls';
+        $command = 'o2switch:deploy --dry-run --force-export';
 
         $response = $this->service->run($command);
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('videos:hls (would generate HLS)', $response->output);
-    }
-
-    public function test_deploy_assets_with_no_compress_flag_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --dry-run --no-compress';
-
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringNotContainsString('images:compress', $response->output);
+        $this->assertStringContainsString('🧹 Force export: will overwrite existing files', $response->output);
+        $this->assertStringNotContainsString('images:compress (would compress images)', $response->output);
+        $this->assertStringNotContainsString('videos:hls (would generate HLS)', $response->output);
     }
 
     public function test_deploy_assets_uses_config_assets_when_configured(): void
@@ -512,7 +476,8 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('rsync -avz assets to', $response->output);
-        $this->assertStringContainsString('images:compress (would compress images)', $response->output);
+        $this->assertStringContainsString('📝 Will skip existing files', $response->output);
+        $this->assertStringNotContainsString('images:compress (would compress images)', $response->output);
     }
 
     public function test_deploy_assets_shows_export_summary_in_dry_run(): void
@@ -523,18 +488,20 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('rsync -avz assets to', $response->output);
+        $this->assertStringContainsString('📝 Will skip existing files', $response->output);
     }
 
     public function test_deploy_assets_with_all_flags_in_dry_run(): void
     {
-        $command = 'o2switch:deploy --force --verbose --dry-run --no-compress --hls';
+        $command = 'o2switch:deploy --force --verbose --dry-run --force-export';
 
         $response = $this->service->run($command);
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('rsync -avz assets to', $response->output);
-        $this->assertStringContainsString('videos:hls (would generate HLS)', $response->output);
-        $this->assertStringNotContainsString('images:compress', $response->output);
+        $this->assertStringContainsString('🧹 Force export: will overwrite existing files', $response->output);
+        $this->assertStringNotContainsString('images:compress (would compress images)', $response->output);
+        $this->assertStringNotContainsString('videos:hls (would generate HLS)', $response->output);
     }
 
     // ============================================================
@@ -543,7 +510,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_executes_pipelines_from_config(): void
     {
-        // Arrange
         Config::set('utils.pipelines', [
             'ping',
         ]);
@@ -552,17 +518,14 @@ final class DeployDirectiveTest extends IntegrationTestCase
             return new UtilsConfig($app['config']);
         });
 
-        // Act
         $response = $this->service->run('o2switch:deploy --force --dry-run');
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('Would execute: ping', $response->output);
     }
 
     public function test_deploy_executes_multiple_pipelines_from_config(): void
     {
-        // Arrange
         Config::set('utils.pipelines', [
             'ping',
             'ping --delay=1',
@@ -572,20 +535,15 @@ final class DeployDirectiveTest extends IntegrationTestCase
             return new UtilsConfig($app['config']);
         });
 
-        // Act
         $response = $this->service->run('o2switch:deploy --force --dry-run');
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-
-        // En dry-run, on vérifie les messages "Would execute:"
         $this->assertStringContainsString('Would execute: ping', $response->output);
         $this->assertStringContainsString('Would execute: ping --delay=1', $response->output);
     }
 
     public function test_deploy_executes_pipeline_with_fqcn_and_args(): void
     {
-        // Arrange
         Config::set('utils.pipelines', [
             [PingDirective::class, ['1']],
         ]);
@@ -594,17 +552,14 @@ final class DeployDirectiveTest extends IntegrationTestCase
             return new UtilsConfig($app['config']);
         });
 
-        // Act
         $response = $this->service->run('o2switch:deploy --force --dry-run');
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
     }
 
     public function test_deploy_executes_pipeline_with_mixed_types(): void
     {
-        // Arrange
         Config::set('utils.pipelines', [
             'ping',
             [PingDirective::class, []],
@@ -614,25 +569,17 @@ final class DeployDirectiveTest extends IntegrationTestCase
             return new UtilsConfig($app['config']);
         });
 
-        // Act
         $response = $this->service->run('o2switch:deploy --force --dry-run');
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-
-        // En dry-run, on vérifie les messages "Would execute:"
         $this->assertStringContainsString('Would execute: ping', $response->output);
         $this->assertStringContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
     }
 
     public function test_deploy_skips_pipelines_when_not_configured(): void
     {
-        // Arrange - déjà fait dans setUp avec Config::set('utils.pipelines', [])
-
-        // Act
         $response = $this->service->run('o2switch:deploy --force --dry-run');
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
 
         $output = strip_ansi($response->output);
@@ -641,7 +588,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     public function test_deploy_skips_pipelines_in_dry_run(): void
     {
-        // Arrange
         Config::set('utils.pipelines', [
             'ping',
         ]);
@@ -650,17 +596,14 @@ final class DeployDirectiveTest extends IntegrationTestCase
             return new UtilsConfig($app['config']);
         });
 
-        // Act
         $response = $this->service->run('o2switch:deploy --force --dry-run');
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
         $this->assertStringContainsString('dry-run', $response->output);
     }
 
     public function test_deploy_summary_shows_pipeline_commands_count(): void
     {
-        // Arrange
         Config::set('utils.pipelines', [
             'ping',
             'ping --delay=1',
@@ -670,20 +613,16 @@ final class DeployDirectiveTest extends IntegrationTestCase
             return new UtilsConfig($app['config']);
         });
 
-        // Act
         $response = $this->service->run('o2switch:deploy --force --dry-run');
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
 
         $output = strip_ansi($response->output);
-
         $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
     }
 
     public function test_deploy_pipelines_with_skip_export_flag_does_not_affect_pipelines(): void
     {
-        // Arrange
         Config::set('utils.pipelines', [
             'ping',
         ]);
@@ -692,13 +631,9 @@ final class DeployDirectiveTest extends IntegrationTestCase
             return new UtilsConfig($app['config']);
         });
 
-        // Act
         $response = $this->service->run('o2switch:deploy --force --dry-run --skip-export');
 
-        // Assert
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-
-        // En dry-run, on voit "Would execute: ping" pas "pong"
         $this->assertStringContainsString('Would execute: ping', $response->output);
         $this->assertStringContainsString('Skipping assets export', $response->output);
     }
