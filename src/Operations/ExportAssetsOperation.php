@@ -181,9 +181,7 @@ final class ExportAssetsOperation
                 'Assets processed' => $processedAssets,
                 'Assets skipped' => $skippedAssets,
                 'Existing files skipped' => $existingFilesSkipped,
-                'Size before' => FileSizeUnit::format($totalSizeBefore),
-                'Size after' => FileSizeUnit::format($totalSizeAfter),
-                'Space saved' => FileSizeUnit::format($totalSizeBefore - $totalSizeAfter),
+
             ]);
             $console->raw(KeyValue::renderWithValueColor($summary, 'yellow'));
             echo "\n";
