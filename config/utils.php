@@ -114,4 +114,31 @@ return [
     'pipelines' => [
         'utils:support --all',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Custom Commands (Remote Execution)
+    |--------------------------------------------------------------------------
+    | These commands will be executed on the remote server during deployment.
+    | They are executed AFTER all other deployment steps.
+    |
+    | You can use any shell commands, including:
+    |   - Multiple commands: 'npm run build && php artisan storage:link'
+    |   - Directives: 'bin/afya cache:clear'
+    |   - Scripts: './setup.sh'
+    |
+    | Examples:
+    | 'custom_commands' => [
+    |     'npm run build',
+    |     'php artisan storage:link',
+    |     'bin/afya cache:clear',
+    |     './setup.sh --force',
+    |     'chmod -R 775 storage bootstrap/cache',
+    | ],
+    */
+    'custom_commands' => [
+        // 'npm run build && php artisan storage:link',
+        // 'bin/afya cache:clear',
+        // 'chmod -R 775 storage bootstrap/cache',
+    ],
 ];

@@ -681,4 +681,194 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('2 pipeline(s) were ignored because they use array format', $response->output);
         $this->assertStringNotContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
     }
+
+    // ============================================================
+    // TESTS POUR ExecuteCustomCommandsOperation
+    // ============================================================
+
+    public function test_deploy_executes_custom_commands_from_config(): void
+    {
+        Config::set('utils.custom_commands', [
+            'npm run build',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: npm run build', $response->output);
+    }
+
+    public function test_deploy_executes_multiple_custom_commands_from_config(): void
+    {
+        Config::set('utils.custom_commands', [
+            'npm run build',
+            'php artisan storage:link',
+            'bin/afya cache:clear',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: npm run build', $response->output);
+        $this->assertStringContainsString('Would execute: php artisan storage:link', $response->output);
+        $this->assertStringContainsString('Would execute: bin/afya cache:clear', $response->output);
+    }
+
+    public function test_deploy_skips_custom_commands_when_not_configured(): void
+    {
+        Config::set('utils.custom_commands', []);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = strip_ansi($response->output);
+        $this->assertStringContainsString('No custom commands configured to execute', $output);
+    }
+
+    public function test_deploy_skips_custom_commands_with_skip_custom_flag(): void
+    {
+        Config::set('utils.custom_commands', [
+            'npm run build',
+            'php artisan storage:link',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run --skip-custom');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Skipping custom commands (--skip-custom enabled)', $response->output);
+        $this->assertStringNotContainsString('Would execute: npm run build', $response->output);
+        $this->assertStringNotContainsString('Would execute: php artisan storage:link', $response->output);
+    }
+
+    public function test_deploy_custom_commands_with_complex_commands(): void
+    {
+        Config::set('utils.custom_commands', [
+            'npm run build && php artisan storage:link',
+            'chmod -R 775 storage bootstrap/cache',
+            './setup.sh --force',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: npm run build && php artisan storage:link', $response->output);
+        $this->assertStringContainsString('Would execute: chmod -R 775 storage bootstrap/cache', $response->output);
+        $this->assertStringContainsString('Would execute: ./setup.sh --force', $response->output);
+    }
+
+    public function test_deploy_custom_commands_show_execution_order(): void
+    {
+        Config::set('utils.custom_commands', [
+            'command1',
+            'command2',
+            'command3',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Executing 3 custom command(s) on remote server', $response->output);
+        $this->assertStringContainsString('Command 1/3', $response->output);
+        $this->assertStringContainsString('Command 2/3', $response->output);
+        $this->assertStringContainsString('Command 3/3', $response->output);
+    }
+
+    public function test_deploy_summary_shows_custom_commands_count(): void
+    {
+        Config::set('utils.custom_commands', [
+            'npm run build',
+            'php artisan storage:link',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = strip_ansi($response->output);
+        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
+    }
+
+    public function test_deploy_custom_commands_with_other_operations(): void
+    {
+        Config::set('utils.custom_commands', [
+            'npm run build',
+        ]);
+
+        Config::set('utils.pipelines', [
+            'ping',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: ping', $response->output);
+        $this->assertStringContainsString('Would execute: npm run build', $response->output);
+    }
+
+    public function test_deploy_custom_commands_skipped_in_dry_run(): void
+    {
+        Config::set('utils.custom_commands', [
+            'npm run build',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('🔍 DRY RUN', $response->output);
+        $this->assertStringContainsString('Would execute: npm run build', $response->output);
+        $this->assertStringNotContainsString('✅ Command completed successfully', $response->output);
+    }
+
+    public function test_deploy_custom_commands_with_all_flags(): void
+    {
+        Config::set('utils.custom_commands', [
+            'npm run build',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --verbose --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: npm run build', $response->output);
+    }
 }

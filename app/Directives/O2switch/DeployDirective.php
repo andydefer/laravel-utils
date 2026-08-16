@@ -11,6 +11,7 @@ use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
 use AndyDefer\LaravelUtils\Contracts\Config\UtilsConfigInterface;
 use AndyDefer\LaravelUtils\Operations\CheckServerConnectivityOperation;
 use AndyDefer\LaravelUtils\Operations\DeployCodeOperation;
+use AndyDefer\LaravelUtils\Operations\ExecuteCustomCommandsOperation;
 use AndyDefer\LaravelUtils\Operations\ExecutePipelinesOperation;
 use AndyDefer\LaravelUtils\Operations\ExportAssetsOperation;
 use AndyDefer\LaravelUtils\Operations\SetupDependenciesOperation;
@@ -40,7 +41,8 @@ final class DeployDirective extends AbstractDirective
                 {--verbose}#"Show detailed output"
                 {--dry-run}#"Simulate the operation without actually executing"
                 {--force-export}#"Force export: overwrite existing files on remote"
-                {--skip-export}#"Skip assets export step"';
+                {--skip-export}#"Skip assets export step"
+                {--skip-custom}#"Skip custom commands execution"';
     }
 
     public function getAliases(): StringTypedCollection
@@ -89,6 +91,7 @@ final class DeployDirective extends AbstractDirective
         $force = $this->getFlag('force');
         $forceExport = $this->getFlag('force-export');
         $skipExport = $this->getFlag('skip-export');
+        $skipCustom = $this->getFlag('skip-custom');
 
         $assets = $this->config->getExportAssets();
         $trackerBasePath = $this->config->getExportTrackerBasePath();
@@ -242,6 +245,26 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
+        // ✅ Execute custom commands
+        if (! $skipCustom) {
+            $customCommandsResult = ExecuteCustomCommandsOperation::handle(
+                $this->sshService,
+                $this->deploymentConfig['remote_path'],
+                $this->config,
+                $dryRun,
+                $this->console
+            );
+
+            if (! $customCommandsResult->success) {
+                $duration = microtime(true) - $this->contextGet('start_time');
+                DeploymentUI::displayResult($this->console, $customCommandsResult, $duration);
+
+                return ExitCode::FAILURE;
+            }
+        } elseif ($this->console) {
+            $this->console->info('⏭️  Skipping custom commands (--skip-custom enabled)');
+        }
+
         $duration = microtime(true) - $this->contextGet('start_time');
 
         $mergedCommands = $deployResult->commands_executed
@@ -254,6 +277,10 @@ final class DeployDirective extends AbstractDirective
 
         if (! $skipExport && ! empty($assets) && isset($exportResult)) {
             $mergedCommands = $mergedCommands->merge($exportResult->commands_executed);
+        }
+
+        if (! $skipCustom && isset($customCommandsResult)) {
+            $mergedCommands = $mergedCommands->merge($customCommandsResult->commands_executed);
         }
 
         $finalResult = DeploymentResultRecord::from([

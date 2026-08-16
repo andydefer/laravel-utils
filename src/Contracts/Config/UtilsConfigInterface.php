@@ -78,4 +78,11 @@ interface UtilsConfigInterface
      * @return int TTL in seconds, 0 means never expire
      */
     public function getExportTrackerTTL(): int;
+
+    /**
+     * Get the custom commands to execute during deployment.
+     *
+     * @return array<int, string> List of custom commands to execute on remote server
+     */
+    public function getCustomCommands(): array;
 }
