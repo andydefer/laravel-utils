@@ -80,9 +80,16 @@ interface UtilsConfigInterface
     public function getExportTrackerTTL(): int;
 
     /**
-     * Get the custom commands to execute during deployment.
+     * Get the custom commands to execute BEFORE deployment.
      *
      * @return array<int, string> List of custom commands to execute on remote server
      */
-    public function getCustomCommands(): array;
+    public function getBeforeCommands(): array;
+
+    /**
+     * Get the custom commands to execute AFTER deployment.
+     *
+     * @return array<int, string> List of custom commands to execute on remote server
+     */
+    public function getAfterCommands(): array;
 }

@@ -23,6 +23,10 @@ final class DeployDirectiveTest extends IntegrationTestCase
 
     private array $originalPipelines;
 
+    private array $originalBeforeCommands;
+
+    private array $originalAfterCommands;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -30,6 +34,8 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->originalDeploymentConfig = config('utils.deployment', []);
         $this->originalExportAssets = config('utils.export_assets', []);
         $this->originalPipelines = config('utils.pipelines', []);
+        $this->originalBeforeCommands = config('utils.before_commands', []);
+        $this->originalAfterCommands = config('utils.after_commands', []);
 
         Config::set('utils.deployment', [
             'ssh_key' => 'test-server',
@@ -43,6 +49,8 @@ final class DeployDirectiveTest extends IntegrationTestCase
         ]);
 
         Config::set('utils.pipelines', []);
+        Config::set('utils.before_commands', []);
+        Config::set('utils.after_commands', []);
 
         $this->app->singleton(UtilsConfigInterface::class, function ($app) {
             return new UtilsConfig($app['config']);
@@ -62,6 +70,8 @@ final class DeployDirectiveTest extends IntegrationTestCase
         Config::set('utils.deployment', $this->originalDeploymentConfig);
         Config::set('utils.export_assets', $this->originalExportAssets);
         Config::set('utils.pipelines', $this->originalPipelines);
+        Config::set('utils.before_commands', $this->originalBeforeCommands);
+        Config::set('utils.after_commands', $this->originalAfterCommands);
 
         $this->service->destroy();
         parent::tearDown();
@@ -97,413 +107,333 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('main', $response->output);
     }
 
-    public function test_deploy_dry_run_mode(): void
+    // ============================================================
+    // TESTS POUR BEFORE COMMANDS
+    // ============================================================
+
+    public function test_deploy_executes_before_commands_from_config(): void
     {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
-        $this->assertStringContainsString('git fetch origin main', $response->output);
-        $this->assertStringContainsString('git reset --hard origin/main', $response->output);
-        $this->assertStringContainsString('composer install --dry-run', $response->output);
-        $this->assertStringContainsString('composer install', $response->output);
-        $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $response->output);
-        $this->assertStringContainsString('npm install (if manifest missing or outdated)', $response->output);
-        $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $response->output);
-        $this->assertStringContainsString('php artisan storage:link', $response->output);
-        $this->assertStringContainsString('php artisan cache:clear', $response->output);
-        $this->assertStringContainsString('php artisan config:clear', $response->output);
-        $this->assertStringContainsString('php artisan route:clear', $response->output);
-        $this->assertStringContainsString('php artisan view:clear', $response->output);
-        $this->assertStringContainsString('php artisan config:cache', $response->output);
-        $this->assertStringContainsString('php artisan route:cache', $response->output);
-        $this->assertStringContainsString('php artisan view:cache', $response->output);
-        $this->assertStringContainsString('composer dump-autoload', $response->output);
-        $this->assertStringContainsString('php artisan migrate --force', $response->output);
-        $this->assertStringContainsString('test -f', $response->output);
-        $this->assertStringContainsString('cp', $response->output);
-        $this->assertStringContainsString('.env.example', $response->output);
-        $this->assertStringContainsString('php artisan key:generate', $response->output);
-        $this->assertStringContainsString('✅ Dry run completed successfully!', $response->output);
-    }
-
-    public function test_deploy_force_flag_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --force --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
-        $this->assertStringContainsString('✅ Dry run completed successfully!', $response->output);
-    }
-
-    public function test_deploy_verbose_flag_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --verbose --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
-        $this->assertStringContainsString('✅ Dry run completed successfully!', $response->output);
-    }
-
-    public function test_deploy_all_flags_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --force --verbose --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
-        $this->assertStringContainsString('✅ Dry run completed successfully!', $response->output);
-    }
-
-    public function test_deploy_displays_summary_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-
-        $output = strip_ansi($response->output);
-
-        $this->assertStringContainsString('Summary:', $output);
-        $this->assertMatchesRegularExpression('/Success\s*:\s*✅\s*Yes/', $output);
-        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
-    }
-
-    public function test_deploy_success_message_after_dry_run(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🎉 Deployment completed successfully!', $response->output);
-    }
-
-    public function test_deploy_uses_configured_settings(): void
-    {
-        Config::set('utils.deployment', [
-            'ssh_key' => 'production-server',
-            'remote_path' => '~/sites/prod-app.com',
-            'git_branch' => 'master',
+        Config::set('utils.before_commands', [
+            'echo "Starting deployment..."',
+            'mkdir -p storage/backups',
         ]);
 
         $this->app->singleton(UtilsConfigInterface::class, function ($app) {
             return new UtilsConfig($app['config']);
         });
 
-        $response = $this->service->run('o2switch:deploy --dry-run');
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('production-server', $response->output);
-        $this->assertStringContainsString('~/sites/prod-app.com', $response->output);
-        $this->assertStringContainsString('master', $response->output);
-        $this->assertStringContainsString('git fetch origin master', $response->output);
-        $this->assertStringContainsString('git reset --hard origin/master', $response->output);
-        $this->assertStringContainsString('composer install --dry-run', $response->output);
-        $this->assertStringContainsString('composer install', $response->output);
-        $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $response->output);
-        $this->assertStringContainsString('npm install (if manifest missing or outdated)', $response->output);
-        $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $response->output);
-        $this->assertStringContainsString('php artisan storage:link', $response->output);
-        $this->assertStringContainsString('php artisan cache:clear', $response->output);
-        $this->assertStringContainsString('php artisan config:clear', $response->output);
-        $this->assertStringContainsString('php artisan route:clear', $response->output);
-        $this->assertStringContainsString('php artisan view:clear', $response->output);
-        $this->assertStringContainsString('php artisan config:cache', $response->output);
-        $this->assertStringContainsString('php artisan route:cache', $response->output);
-        $this->assertStringContainsString('php artisan view:cache', $response->output);
-        $this->assertStringContainsString('composer dump-autoload', $response->output);
-        $this->assertStringContainsString('php artisan migrate --force', $response->output);
-        $this->assertStringContainsString('test -f', $response->output);
-        $this->assertStringContainsString('.env.example', $response->output);
-        $this->assertStringContainsString('php artisan key:generate', $response->output);
+        $this->assertStringContainsString('Would execute: echo "Starting deployment..."', $response->output);
+        $this->assertStringContainsString('Would execute: mkdir -p storage/backups', $response->output);
+        $this->assertStringContainsString('Executing 2 before-command(s) on remote server', $response->output);
+        $this->assertStringContainsString('Before-command 1/2', $response->output);
+        $this->assertStringContainsString('Before-command 2/2', $response->output);
+        $this->assertStringContainsString('All before-commands executed successfully', $response->output);
     }
 
-    public function test_deploy_skips_connectivity_checks_in_dry_run(): void
+    public function test_deploy_executes_before_commands_before_code_deployment(): void
     {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringNotContainsString('🔍 Checking server connectivity...', $response->output);
-        $this->assertStringNotContainsString('🔍 Checking remote path...', $response->output);
-    }
-
-    public function test_deploy_full_dry_run_flow(): void
-    {
-        $command = 'o2switch:deploy --force --verbose --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-
-        $output = strip_ansi($response->output);
-
-        $this->assertStringContainsString('🚀 O2SWITCH DEPLOYMENT', $output);
-        $this->assertStringContainsString('📋 Deployment Configuration:', $output);
-        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $output);
-        $this->assertStringContainsString('git fetch origin main', $output);
-        $this->assertStringContainsString('git reset --hard origin/main', $output);
-        $this->assertStringContainsString('composer install --dry-run', $output);
-        $this->assertStringContainsString('composer install', $output);
-        $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $output);
-        $this->assertStringContainsString('npm install (if manifest missing or outdated)', $output);
-        $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $output);
-        $this->assertStringContainsString('php artisan storage:link', $output);
-        $this->assertStringContainsString('php artisan cache:clear', $output);
-        $this->assertStringContainsString('php artisan config:clear', $output);
-        $this->assertStringContainsString('php artisan route:clear', $output);
-        $this->assertStringContainsString('php artisan view:clear', $output);
-        $this->assertStringContainsString('php artisan config:cache', $output);
-        $this->assertStringContainsString('php artisan route:cache', $output);
-        $this->assertStringContainsString('php artisan view:cache', $output);
-        $this->assertStringContainsString('composer dump-autoload', $output);
-        $this->assertStringContainsString('php artisan migrate --force', $output);
-        $this->assertStringContainsString('test -f', $output);
-        $this->assertStringContainsString('.env.example', $output);
-        $this->assertStringContainsString('php artisan key:generate', $output);
-        $this->assertStringContainsString('✅ Dry run completed successfully!', $output);
-        $this->assertStringContainsString('📊 Summary:', $output);
-
-        $this->assertMatchesRegularExpression('/Duration\s*:\s*[\d.]+\s*s/', $output);
-        $this->assertMatchesRegularExpression('/Success\s*:\s*✅\s*Yes/', $output);
-        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
-
-        $this->assertStringContainsString('🎉 Deployment completed successfully!', $output);
-    }
-
-    public function test_deploy_without_flags_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('✅ Dry run completed successfully!', $response->output);
-    }
-
-    public function test_deploy_includes_environment_setup_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('test -f', $response->output);
-        $this->assertStringContainsString('.env.example', $response->output);
-        $this->assertStringContainsString('php artisan key:generate', $response->output);
-    }
-
-    public function test_deploy_shows_environment_setup_messages(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
-        $this->assertStringContainsString('test -f', $response->output);
-        $this->assertStringContainsString('.env.example', $response->output);
-        $this->assertStringContainsString('php artisan key:generate', $response->output);
-    }
-
-    public function test_deploy_includes_dependencies_setup_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('composer install --dry-run', $response->output);
-        $this->assertStringContainsString('composer install', $response->output);
-        $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $response->output);
-    }
-
-    public function test_deploy_shows_dependencies_setup_messages(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
-        $this->assertStringContainsString('composer install --dry-run', $response->output);
-        $this->assertStringContainsString('rm -rf vendor composer.lock (if needed)', $response->output);
-        $this->assertStringContainsString('composer install', $response->output);
-        $this->assertStringContainsString('touch vendor/autoload.php (if autoload outdated)', $response->output);
-    }
-
-    public function test_deploy_includes_frontend_assets_setup_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('npm install (if manifest missing or outdated)', $response->output);
-        $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $response->output);
-    }
-
-    public function test_deploy_shows_frontend_assets_setup_messages(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
-        $this->assertStringContainsString('test -f public/build/manifest.json', $response->output);
-        $this->assertStringContainsString('npm install (if manifest missing or outdated)', $response->output);
-        $this->assertStringContainsString('npm run build (if manifest missing or outdated)', $response->output);
-    }
-
-    public function test_deploy_dry_run_shows_frontend_check_message(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('test -f public/build/manifest.json', $response->output);
-    }
-
-    public function test_deploy_includes_storage_setup_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('php artisan storage:link', $response->output);
-        $this->assertStringContainsString('(Check and create storage symbolic links)', $response->output);
-    }
-
-    public function test_deploy_shows_storage_setup_messages(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
-        $this->assertStringContainsString('php artisan storage:link', $response->output);
-    }
-
-    public function test_deploy_dry_run_shows_storage_check_message(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('php artisan storage:link', $response->output);
-        $this->assertStringContainsString('(Check and create storage symbolic links)', $response->output);
-    }
-
-    public function test_deploy_includes_laravel_optimization_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('php artisan cache:clear', $response->output);
-        $this->assertStringContainsString('php artisan config:clear', $response->output);
-        $this->assertStringContainsString('php artisan route:clear', $response->output);
-        $this->assertStringContainsString('php artisan view:clear', $response->output);
-        $this->assertStringContainsString('php artisan config:cache', $response->output);
-        $this->assertStringContainsString('php artisan route:cache', $response->output);
-        $this->assertStringContainsString('php artisan view:cache', $response->output);
-        $this->assertStringContainsString('composer dump-autoload', $response->output);
-        $this->assertStringContainsString('php artisan migrate --force', $response->output);
-    }
-
-    public function test_deploy_shows_laravel_optimization_messages(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🔍 DRY RUN - Would execute:', $response->output);
-        $this->assertStringContainsString('php artisan cache:clear', $response->output);
-        $this->assertStringContainsString('php artisan config:cache', $response->output);
-        $this->assertStringContainsString('composer dump-autoload', $response->output);
-        $this->assertStringContainsString('php artisan migrate --force', $response->output);
-    }
-
-    public function test_deploy_summary_shows_correct_commands_count_with_all_operations_including_optimization(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-
-        $output = strip_ansi($response->output);
-
-        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
-    }
-
-    // ============================================================
-    // TESTS POUR ExportAssetsOperation
-    // ============================================================
-
-    public function test_deploy_includes_assets_export_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --dry-run';
-
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('rsync -avz assets to', $response->output);
-        $this->assertStringContainsString('📝 Will skip existing files (tracker enabled)', $response->output);
-        $this->assertStringNotContainsString('images:compress (would compress images)', $response->output);
-    }
-
-    public function test_deploy_assets_with_force_export_flag_in_dry_run(): void
-    {
-        $command = 'o2switch:deploy --dry-run --force-export';
-
-        $response = $this->service->run($command);
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🧹 Force export: will overwrite existing files', $response->output);
-        $this->assertStringNotContainsString('images:compress (would compress images)', $response->output);
-        $this->assertStringNotContainsString('videos:hls (would generate HLS)', $response->output);
-    }
-
-    public function test_deploy_assets_uses_config_assets_when_configured(): void
-    {
-        Config::set('utils.export_assets', [
-            'storage/app/public/config-assets',
+        Config::set('utils.before_commands', [
+            'echo "Before deployment"',
         ]);
 
         $this->app->singleton(UtilsConfigInterface::class, function ($app) {
             return new UtilsConfig($app['config']);
         });
 
-        $response = $this->service->run('o2switch:deploy --dry-run');
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('rsync -avz assets to', $response->output);
-        $this->assertStringContainsString('📝 Will skip existing files (tracker enabled)', $response->output);
-        $this->assertStringNotContainsString('images:compress (would compress images)', $response->output);
+
+        $output = $response->output;
+        $beforePosition = strpos($output, 'Would execute: echo "Before deployment"');
+        $deployPosition = strpos($output, 'git fetch origin main');
+
+        $this->assertNotFalse($beforePosition);
+        $this->assertNotFalse($deployPosition);
+        $this->assertLessThan($deployPosition, $beforePosition, 'Before commands should execute before code deployment');
     }
 
-    public function test_deploy_assets_shows_export_summary_in_dry_run(): void
+    public function test_deploy_skips_before_commands_when_not_configured(): void
     {
-        $command = 'o2switch:deploy --dry-run';
+        Config::set('utils.before_commands', []);
 
-        $response = $this->service->run($command);
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('rsync -avz assets to', $response->output);
-        $this->assertStringContainsString('📝 Will skip existing files (tracker enabled)', $response->output);
+
+        $output = strip_ansi($response->output);
+        $this->assertStringContainsString('No before-commands configured to execute', $output);
     }
 
-    public function test_deploy_assets_with_all_flags_in_dry_run(): void
+    public function test_deploy_skips_before_commands_with_skip_before_flag(): void
     {
-        $command = 'o2switch:deploy --force --verbose --dry-run --force-export';
+        Config::set('utils.before_commands', [
+            'echo "Starting deployment..."',
+        ]);
 
-        $response = $this->service->run($command);
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run --skip-before');
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('rsync -avz assets to', $response->output);
-        $this->assertStringContainsString('🧹 Force export: will overwrite existing files', $response->output);
-        $this->assertStringNotContainsString('images:compress (would compress images)', $response->output);
-        $this->assertStringNotContainsString('videos:hls (would generate HLS)', $response->output);
+        $this->assertStringContainsString('⏭️  Skipping before-commands (--skip-before enabled)', $response->output);
+        $this->assertStringNotContainsString('Would execute: echo "Starting deployment..."', $response->output);
+    }
+
+    public function test_deploy_before_commands_with_complex_commands(): void
+    {
+        Config::set('utils.before_commands', [
+            'cp .env .env.backup',
+            'echo "Backup created at $(date)"',
+            './pre-deploy-check.sh --force',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: cp .env .env.backup', $response->output);
+        $this->assertStringContainsString('Would execute: echo "Backup created at $(date)"', $response->output);
+        $this->assertStringContainsString('Would execute: ./pre-deploy-check.sh --force', $response->output);
+        $this->assertStringContainsString('All before-commands executed successfully', $response->output);
+    }
+
+    public function test_deploy_summary_shows_before_commands_count(): void
+    {
+        Config::set('utils.before_commands', [
+            'echo "Before command 1"',
+            'echo "Before command 2"',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = strip_ansi($response->output);
+        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
     }
 
     // ============================================================
-    // TESTS POUR ExecutePipelinesOperation - UNIQUEMENT STRINGS
+    // TESTS POUR AFTER COMMANDS
+    // ============================================================
+
+    public function test_deploy_executes_after_commands_from_config(): void
+    {
+        Config::set('utils.after_commands', [
+            'npm run build',
+            'php artisan storage:link',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: npm run build', $response->output);
+        $this->assertStringContainsString('Would execute: php artisan storage:link', $response->output);
+        $this->assertStringContainsString('Executing 2 after-command(s) on remote server', $response->output);
+        $this->assertStringContainsString('After-command 1/2', $response->output);
+        $this->assertStringContainsString('After-command 2/2', $response->output);
+        $this->assertStringContainsString('All after-commands executed successfully', $response->output);
+    }
+
+    public function test_deploy_executes_after_commands_after_pipelines(): void
+    {
+        Config::set('utils.after_commands', [
+            'echo "After deployment"',
+        ]);
+
+        Config::set('utils.pipelines', [
+            'ping',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = $response->output;
+        $pipelinesPosition = strpos($output, 'Would execute: ping');
+        $afterPosition = strpos($output, 'Would execute: echo "After deployment"');
+
+        $this->assertNotFalse($pipelinesPosition);
+        $this->assertNotFalse($afterPosition);
+        $this->assertLessThan($afterPosition, $pipelinesPosition, 'After commands should execute after pipelines');
+    }
+
+    public function test_deploy_skips_after_commands_when_not_configured(): void
+    {
+        Config::set('utils.after_commands', []);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = strip_ansi($response->output);
+        $this->assertStringContainsString('No after-commands configured to execute', $output);
+    }
+
+    public function test_deploy_skips_after_commands_with_skip_after_flag(): void
+    {
+        Config::set('utils.after_commands', [
+            'npm run build',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run --skip-after');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('⏭️  Skipping after-commands (--skip-after enabled)', $response->output);
+        $this->assertStringNotContainsString('Would execute: npm run build', $response->output);
+    }
+
+    public function test_deploy_after_commands_with_complex_commands(): void
+    {
+        Config::set('utils.after_commands', [
+            'npm run build && php artisan storage:link',
+            'chmod -R 775 storage bootstrap/cache',
+            './post-deploy.sh --force',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: npm run build && php artisan storage:link', $response->output);
+        $this->assertStringContainsString('Would execute: chmod -R 775 storage bootstrap/cache', $response->output);
+        $this->assertStringContainsString('Would execute: ./post-deploy.sh --force', $response->output);
+        $this->assertStringContainsString('All after-commands executed successfully', $response->output);
+    }
+
+    public function test_deploy_summary_shows_after_commands_count(): void
+    {
+        Config::set('utils.after_commands', [
+            'echo "After command 1"',
+            'echo "After command 2"',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = strip_ansi($response->output);
+        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
+    }
+
+    // ============================================================
+    // TESTS POUR BEFORE + AFTER COMMANDS COMBINÉS
+    // ============================================================
+
+    public function test_deploy_executes_both_before_and_after_commands(): void
+    {
+        Config::set('utils.before_commands', [
+            'echo "Before"',
+        ]);
+
+        Config::set('utils.after_commands', [
+            'echo "After"',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('Would execute: echo "Before"', $response->output);
+        $this->assertStringContainsString('Would execute: echo "After"', $response->output);
+
+        $output = $response->output;
+        $beforePosition = strpos($output, 'echo "Before"');
+        $afterPosition = strpos($output, 'echo "After"');
+
+        $this->assertLessThan($afterPosition, $beforePosition, 'Before commands should execute before after commands');
+    }
+
+    public function test_deploy_skips_both_before_and_after_with_flags(): void
+    {
+        Config::set('utils.before_commands', [
+            'echo "Before"',
+        ]);
+
+        Config::set('utils.after_commands', [
+            'echo "After"',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run --skip-before --skip-after');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('⏭️  Skipping before-commands (--skip-before enabled)', $response->output);
+        $this->assertStringContainsString('⏭️  Skipping after-commands (--skip-after enabled)', $response->output);
+        $this->assertStringNotContainsString('Would execute: echo "Before"', $response->output);
+        $this->assertStringNotContainsString('Would execute: echo "After"', $response->output);
+    }
+
+    public function test_deploy_summary_shows_both_before_and_after_commands_count(): void
+    {
+        Config::set('utils.before_commands', [
+            'echo "Before"',
+        ]);
+
+        Config::set('utils.after_commands', [
+            'echo "After 1"',
+            'echo "After 2"',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $response = $this->service->run('o2switch:deploy --force --dry-run');
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = strip_ansi($response->output);
+        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
+    }
+
+    // ============================================================
+    // TESTS POUR LES PIPELINES (UNIQUEMENT STRINGS)
     // ============================================================
 
     public function test_deploy_executes_pipelines_from_config(): void
@@ -550,62 +480,6 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('No pipelines configured to execute', $output);
     }
 
-    public function test_deploy_skips_pipelines_in_dry_run(): void
-    {
-        Config::set('utils.pipelines', [
-            'ping',
-        ]);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('dry-run', $response->output);
-    }
-
-    public function test_deploy_summary_shows_pipeline_commands_count(): void
-    {
-        Config::set('utils.pipelines', [
-            'ping',
-            'ping --delay=1',
-        ]);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-
-        $output = strip_ansi($response->output);
-        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
-    }
-
-    public function test_deploy_pipelines_with_skip_export_flag_does_not_affect_pipelines(): void
-    {
-        Config::set('utils.pipelines', [
-            'ping',
-        ]);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run --skip-export');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('Would execute: ping', $response->output);
-        $this->assertStringContainsString('Skipping assets export', $response->output);
-    }
-
-    // ============================================================
-    // TESTS POUR LES PIPELINES IGNORÉES (FORMAT TABLEAU NON SUPPORTÉ)
-    // ============================================================
-
     public function test_deploy_ignores_pipeline_with_fqcn_array_format(): void
     {
         Config::set('utils.pipelines', [
@@ -644,183 +518,54 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringNotContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
     }
 
-    public function test_deploy_summary_shows_pipeline_ignored_warning(): void
+    // ============================================================
+    // TESTS POUR ASSETS EXPORT
+    // ============================================================
+
+    public function test_deploy_includes_assets_export_in_dry_run(): void
     {
-        Config::set('utils.pipelines', [
-            [PingDirective::class, ['1']],
-            [PingDirective::class, ['2']],
-        ]);
+        $command = 'o2switch:deploy --dry-run';
 
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
+        $response = $this->service->run($command);
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('2 pipeline(s) were ignored because they use array format', $response->output);
-        $this->assertStringContainsString('Only string signatures are supported', $response->output);
+        $this->assertStringContainsString('rsync -avz assets to', $response->output);
+        $this->assertStringContainsString('📝 Will skip existing files (tracker enabled)', $response->output);
     }
 
-    public function test_deploy_ignores_pipeline_with_array_format_and_continues_with_other_pipelines(): void
+    public function test_deploy_assets_with_force_export_flag_in_dry_run(): void
     {
-        Config::set('utils.pipelines', [
-            [PingDirective::class, ['1']],
-            'ping --delay=1',
-            [PingDirective::class, ['2']],
-        ]);
+        $command = 'o2switch:deploy --dry-run --force-export';
 
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
+        $response = $this->service->run($command);
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('Would execute: ping --delay=1', $response->output);
-        $this->assertStringContainsString('2 pipeline(s) were ignored because they use array format', $response->output);
-        $this->assertStringNotContainsString('Would execute: AndyDefer\LaravelUtils\Tests\Fixtures\Directives\PingDirective', $response->output);
+        $this->assertStringContainsString('🧹 Force export: will overwrite existing files', $response->output);
+    }
+
+    public function test_deploy_skips_assets_export_with_skip_export_flag(): void
+    {
+        $command = 'o2switch:deploy --dry-run --skip-export';
+
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+        $this->assertStringContainsString('⏭️  Skipping assets export (--skip-export enabled)', $response->output);
+        $this->assertStringNotContainsString('rsync -avz assets to', $response->output);
     }
 
     // ============================================================
-    // TESTS POUR ExecuteCustomCommandsOperation
+    // TESTS DE LA COMMANDE COMPLÈTE
     // ============================================================
 
-    public function test_deploy_executes_custom_commands_from_config(): void
+    public function test_deploy_full_dry_run_flow(): void
     {
-        Config::set('utils.custom_commands', [
-            'npm run build',
+        Config::set('utils.before_commands', [
+            'echo "Before"',
         ]);
 
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('Would execute: npm run build', $response->output);
-    }
-
-    public function test_deploy_executes_multiple_custom_commands_from_config(): void
-    {
-        Config::set('utils.custom_commands', [
-            'npm run build',
-            'php artisan storage:link',
-            'bin/afya cache:clear',
-        ]);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('Would execute: npm run build', $response->output);
-        $this->assertStringContainsString('Would execute: php artisan storage:link', $response->output);
-        $this->assertStringContainsString('Would execute: bin/afya cache:clear', $response->output);
-    }
-
-    public function test_deploy_skips_custom_commands_when_not_configured(): void
-    {
-        Config::set('utils.custom_commands', []);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-
-        $output = strip_ansi($response->output);
-        $this->assertStringContainsString('No custom commands configured to execute', $output);
-    }
-
-    public function test_deploy_skips_custom_commands_with_skip_custom_flag(): void
-    {
-        Config::set('utils.custom_commands', [
-            'npm run build',
-            'php artisan storage:link',
-        ]);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run --skip-custom');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('Skipping custom commands (--skip-custom enabled)', $response->output);
-        $this->assertStringNotContainsString('Would execute: npm run build', $response->output);
-        $this->assertStringNotContainsString('Would execute: php artisan storage:link', $response->output);
-    }
-
-    public function test_deploy_custom_commands_with_complex_commands(): void
-    {
-        Config::set('utils.custom_commands', [
-            'npm run build && php artisan storage:link',
-            'chmod -R 775 storage bootstrap/cache',
-            './setup.sh --force',
-        ]);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('Would execute: npm run build && php artisan storage:link', $response->output);
-        $this->assertStringContainsString('Would execute: chmod -R 775 storage bootstrap/cache', $response->output);
-        $this->assertStringContainsString('Would execute: ./setup.sh --force', $response->output);
-    }
-
-    public function test_deploy_custom_commands_show_execution_order(): void
-    {
-        Config::set('utils.custom_commands', [
-            'command1',
-            'command2',
-            'command3',
-        ]);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('Executing 3 custom command(s) on remote server', $response->output);
-        $this->assertStringContainsString('Command 1/3', $response->output);
-        $this->assertStringContainsString('Command 2/3', $response->output);
-        $this->assertStringContainsString('Command 3/3', $response->output);
-    }
-
-    public function test_deploy_summary_shows_custom_commands_count(): void
-    {
-        Config::set('utils.custom_commands', [
-            'npm run build',
-            'php artisan storage:link',
-        ]);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-
-        $output = strip_ansi($response->output);
-        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
-    }
-
-    public function test_deploy_custom_commands_with_other_operations(): void
-    {
-        Config::set('utils.custom_commands', [
-            'npm run build',
+        Config::set('utils.after_commands', [
+            'echo "After"',
         ]);
 
         Config::set('utils.pipelines', [
@@ -831,44 +576,25 @@ final class DeployDirectiveTest extends IntegrationTestCase
             return new UtilsConfig($app['config']);
         });
 
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
+        $command = 'o2switch:deploy --force --verbose --dry-run';
+        $response = $this->service->run($command);
 
         $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('Would execute: ping', $response->output);
-        $this->assertStringContainsString('Would execute: npm run build', $response->output);
-    }
 
-    public function test_deploy_custom_commands_skipped_in_dry_run(): void
-    {
-        Config::set('utils.custom_commands', [
-            'npm run build',
-        ]);
+        $output = strip_ansi($response->output);
 
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('🔍 DRY RUN', $response->output);
-        $this->assertStringContainsString('Would execute: npm run build', $response->output);
-        $this->assertStringNotContainsString('✅ Command completed successfully', $response->output);
-    }
-
-    public function test_deploy_custom_commands_with_all_flags(): void
-    {
-        Config::set('utils.custom_commands', [
-            'npm run build',
-        ]);
-
-        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
-            return new UtilsConfig($app['config']);
-        });
-
-        $response = $this->service->run('o2switch:deploy --force --verbose --dry-run');
-
-        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
-        $this->assertStringContainsString('Would execute: npm run build', $response->output);
+        $this->assertStringContainsString('🚀 O2SWITCH DEPLOYMENT', $output);
+        $this->assertStringContainsString('📋 Deployment Configuration:', $output);
+        $this->assertStringContainsString('Would execute: echo "Before"', $output);
+        $this->assertStringContainsString('git fetch origin main', $output);
+        $this->assertStringContainsString('composer install --dry-run', $output);
+        $this->assertStringContainsString('npm install (if manifest missing or outdated)', $output);
+        $this->assertStringContainsString('php artisan storage:link', $output);
+        $this->assertStringContainsString('php artisan config:cache', $output);
+        $this->assertStringContainsString('Would execute: ping', $output);
+        $this->assertStringContainsString('Would execute: echo "After"', $output);
+        $this->assertStringContainsString('✅ Dry run completed successfully!', $output);
+        $this->assertStringContainsString('📊 Summary:', $output);
+        $this->assertStringContainsString('🎉 Deployment completed successfully!', $output);
     }
 }

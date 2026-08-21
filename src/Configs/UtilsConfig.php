@@ -86,7 +86,9 @@ final class UtilsConfig implements UtilsConfigInterface
 
     private const DEFAULT_EXPORT_TRACKER_TTL = 0;
 
-    private const DEFAULT_CUSTOM_COMMANDS = [];
+    private const DEFAULT_BEFORE_COMMANDS = [];
+
+    private const DEFAULT_AFTER_COMMANDS = [];
 
     public function __construct(
         private readonly ConfigRepository $config,
@@ -197,9 +199,16 @@ final class UtilsConfig implements UtilsConfigInterface
         return is_int($ttl) ? $ttl : self::DEFAULT_EXPORT_TRACKER_TTL;
     }
 
-    public function getCustomCommands(): array
+    public function getBeforeCommands(): array
     {
-        $commands = $this->config->get('utils.custom_commands', self::DEFAULT_CUSTOM_COMMANDS);
+        $commands = $this->config->get('utils.before_commands', self::DEFAULT_BEFORE_COMMANDS);
+
+        return is_array($commands) ? $commands : [];
+    }
+
+    public function getAfterCommands(): array
+    {
+        $commands = $this->config->get('utils.after_commands', self::DEFAULT_AFTER_COMMANDS);
 
         return is_array($commands) ? $commands : [];
     }

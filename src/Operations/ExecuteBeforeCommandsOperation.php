@@ -10,17 +10,10 @@ use AndyDefer\LaravelUtils\Contracts\Config\UtilsConfigInterface;
 use AndyDefer\LaravelUtils\Records\DeploymentResultRecord;
 use AndyDefer\LaravelUtils\Services\SshService;
 
-final class ExecuteCustomCommandsOperation
+final class ExecuteBeforeCommandsOperation
 {
     /**
-     * Execute custom commands on the remote server.
-     *
-     * @param  SshService  $sshService  The SSH service instance
-     * @param  string  $remotePath  The remote path where commands will be executed
-     * @param  UtilsConfigInterface  $config  The configuration instance
-     * @param  bool  $dryRun  Whether to simulate the operation
-     * @param  Console|null  $console  The console instance for output
-     * @return DeploymentResultRecord The result of the operation
+     * Execute custom commands BEFORE deployment on the remote server.
      */
     public static function handle(
         SshService $sshService,
@@ -29,23 +22,23 @@ final class ExecuteCustomCommandsOperation
         bool $dryRun = false,
         ?Console $console = null
     ): DeploymentResultRecord {
-        $commands = $config->getCustomCommands();
+        $commands = $config->getBeforeCommands();
         $commandsExecuted = [];
 
         if (empty($commands)) {
             if ($console) {
-                $console->logInfo('📋 No custom commands configured to execute');
+                $console->logInfo('📋 No before-commands configured to execute');
             }
 
             return DeploymentResultRecord::from([
                 'success' => true,
-                'message' => 'No custom commands to execute',
+                'message' => 'No before-commands to execute',
                 'commands_executed' => [],
             ]);
         }
 
         if ($console) {
-            $console->logInfo('🔧 Executing '.count($commands).' custom command(s) on remote server...');
+            $console->logInfo('🔧 Executing '.count($commands).' before-command(s) on remote server...');
             $console->line();
         }
 
@@ -55,7 +48,7 @@ final class ExecuteCustomCommandsOperation
             $commandNumber = $index + 1;
 
             if ($console) {
-                $console->logInfo("📦 Command {$commandNumber}/".count($commands));
+                $console->logInfo("📦 Before-command {$commandNumber}/".count($commands));
                 $console->logInfo("   📝 Executing: {$command}");
             }
 
@@ -63,7 +56,7 @@ final class ExecuteCustomCommandsOperation
                 if ($console) {
                     $console->logInfo("   🔍 DRY RUN: Would execute: {$command}");
                 }
-                $commandsExecuted[] = "custom: {$command} (dry-run)";
+                $commandsExecuted[] = "before: {$command} (dry-run)";
 
                 if ($console) {
                     $console->line();
@@ -72,15 +65,13 @@ final class ExecuteCustomCommandsOperation
                 continue;
             }
 
-            // Build the full command with cd to remote path
             $remoteCommand = "cd {$remotePath} && {$command}";
-            $commandsExecuted[] = "custom: {$command}";
+            $commandsExecuted[] = "before: {$command}";
 
             if ($console) {
                 $console->logInfo("   📤 Command: {$remoteCommand}");
             }
 
-            // Execute the command
             $result = $sshService->execute($remoteCommand, false);
 
             if ($console && ! empty($result->output)) {
@@ -91,30 +82,30 @@ final class ExecuteCustomCommandsOperation
             if (! $result->success) {
                 $globalSuccess = false;
                 if ($console) {
-                    $console->logError("   ❌ Command failed: {$command}");
+                    $console->logError("   ❌ Before-command failed: {$command}");
                     $console->logError('   ❌ Error: '.($result->error ?? 'Unknown error'));
                 }
                 break;
             }
 
             if ($console) {
-                $console->logSuccess('   ✅ Command completed successfully');
+                $console->logSuccess('   ✅ Before-command completed successfully');
                 $console->line();
             }
         }
 
         if ($console) {
             if ($globalSuccess) {
-                $console->logSuccess('✅ All custom commands executed successfully on remote server');
+                $console->logSuccess('✅ All before-commands executed successfully');
             } else {
-                $console->logError('❌ Some custom commands failed on remote server');
+                $console->logError('❌ Some before-commands failed');
             }
             $console->line();
         }
 
         return DeploymentResultRecord::from([
             'success' => $globalSuccess,
-            'message' => $globalSuccess ? 'All custom commands executed successfully' : 'Some custom commands failed',
+            'message' => $globalSuccess ? 'All before-commands executed successfully' : 'Some before-commands failed',
             'commands_executed' => StringTypedCollection::from($commandsExecuted),
         ]);
     }

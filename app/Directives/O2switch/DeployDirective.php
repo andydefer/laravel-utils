@@ -11,7 +11,8 @@ use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
 use AndyDefer\LaravelUtils\Contracts\Config\UtilsConfigInterface;
 use AndyDefer\LaravelUtils\Operations\CheckServerConnectivityOperation;
 use AndyDefer\LaravelUtils\Operations\DeployCodeOperation;
-use AndyDefer\LaravelUtils\Operations\ExecuteCustomCommandsOperation;
+use AndyDefer\LaravelUtils\Operations\ExecuteAfterCommandsOperation;
+use AndyDefer\LaravelUtils\Operations\ExecuteBeforeCommandsOperation;
 use AndyDefer\LaravelUtils\Operations\ExecutePipelinesOperation;
 use AndyDefer\LaravelUtils\Operations\ExportAssetsOperation;
 use AndyDefer\LaravelUtils\Operations\SetupDependenciesOperation;
@@ -42,7 +43,8 @@ final class DeployDirective extends AbstractDirective
                 {--dry-run}#"Simulate the operation without actually executing"
                 {--force-export}#"Force export: overwrite existing files on remote"
                 {--skip-export}#"Skip assets export step"
-                {--skip-custom}#"Skip custom commands execution"';
+                {--skip-before}#"Skip before-commands execution"
+                {--skip-after}#"Skip after-commands execution"';
     }
 
     public function getAliases(): StringTypedCollection
@@ -91,7 +93,8 @@ final class DeployDirective extends AbstractDirective
         $force = $this->getFlag('force');
         $forceExport = $this->getFlag('force-export');
         $skipExport = $this->getFlag('skip-export');
-        $skipCustom = $this->getFlag('skip-custom');
+        $skipBefore = $this->getFlag('skip-before');
+        $skipAfter = $this->getFlag('skip-after');
 
         $assets = $this->config->getExportAssets();
         $trackerBasePath = $this->config->getExportTrackerBasePath();
@@ -124,6 +127,26 @@ final class DeployDirective extends AbstractDirective
         }
 
         $this->contextSet('start_time', microtime(true));
+
+        // ✅ Execute BEFORE commands
+        if (! $skipBefore) {
+            $beforeCommandsResult = ExecuteBeforeCommandsOperation::handle(
+                $this->sshService,
+                $this->deploymentConfig['remote_path'],
+                $this->config,
+                $dryRun,
+                $this->console
+            );
+
+            if (! $beforeCommandsResult->success) {
+                $duration = microtime(true) - $this->contextGet('start_time');
+                DeploymentUI::displayResult($this->console, $beforeCommandsResult, $duration);
+
+                return ExitCode::FAILURE;
+            }
+        } elseif ($this->console) {
+            $this->console->info('⏭️  Skipping before-commands (--skip-before enabled)');
+        }
 
         $deployResult = DeployCodeOperation::handle(
             $this->sshService,
@@ -245,9 +268,9 @@ final class DeployDirective extends AbstractDirective
             return ExitCode::FAILURE;
         }
 
-        // ✅ Execute custom commands
-        if (! $skipCustom) {
-            $customCommandsResult = ExecuteCustomCommandsOperation::handle(
+        // ✅ Execute AFTER commands
+        if (! $skipAfter) {
+            $afterCommandsResult = ExecuteAfterCommandsOperation::handle(
                 $this->sshService,
                 $this->deploymentConfig['remote_path'],
                 $this->config,
@@ -255,14 +278,14 @@ final class DeployDirective extends AbstractDirective
                 $this->console
             );
 
-            if (! $customCommandsResult->success) {
+            if (! $afterCommandsResult->success) {
                 $duration = microtime(true) - $this->contextGet('start_time');
-                DeploymentUI::displayResult($this->console, $customCommandsResult, $duration);
+                DeploymentUI::displayResult($this->console, $afterCommandsResult, $duration);
 
                 return ExitCode::FAILURE;
             }
         } elseif ($this->console) {
-            $this->console->info('⏭️  Skipping custom commands (--skip-custom enabled)');
+            $this->console->info('⏭️  Skipping after-commands (--skip-after enabled)');
         }
 
         $duration = microtime(true) - $this->contextGet('start_time');
@@ -275,12 +298,16 @@ final class DeployDirective extends AbstractDirective
             ->merge($optimizationResult->commands_executed)
             ->merge($pipelinesResult->commands_executed);
 
+        if (! $skipBefore && isset($beforeCommandsResult)) {
+            $mergedCommands = $mergedCommands->merge($beforeCommandsResult->commands_executed);
+        }
+
         if (! $skipExport && ! empty($assets) && isset($exportResult)) {
             $mergedCommands = $mergedCommands->merge($exportResult->commands_executed);
         }
 
-        if (! $skipCustom && isset($customCommandsResult)) {
-            $mergedCommands = $mergedCommands->merge($customCommandsResult->commands_executed);
+        if (! $skipAfter && isset($afterCommandsResult)) {
+            $mergedCommands = $mergedCommands->merge($afterCommandsResult->commands_executed);
         }
 
         $finalResult = DeploymentResultRecord::from([

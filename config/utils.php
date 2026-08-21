@@ -117,10 +117,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Custom Commands (Remote Execution)
+    | Before Commands (Remote Execution)
     |--------------------------------------------------------------------------
-    | These commands will be executed on the remote server during deployment.
-    | They are executed AFTER all other deployment steps.
+    | These commands will be executed on the remote server BEFORE any
+    | deployment steps (before code deployment).
+    |
+    | Examples:
+    | 'before_commands' => [
+    |     'echo "Starting deployment..."',
+    |     'mkdir -p backups',
+    |     'cp .env .env.backup',
+    | ],
+    */
+    'before_commands' => [
+        // 'echo "Starting deployment on $(date)"',
+        // 'mkdir -p storage/backups',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | After Commands (Remote Execution)
+    |--------------------------------------------------------------------------
+    | These commands will be executed on the remote server AFTER all
+    | deployment steps (after pipelines execution).
     |
     | You can use any shell commands, including:
     |   - Multiple commands: 'npm run build && php artisan storage:link'
@@ -128,7 +147,7 @@ return [
     |   - Scripts: './setup.sh'
     |
     | Examples:
-    | 'custom_commands' => [
+    | 'after_commands' => [
     |     'npm run build',
     |     'php artisan storage:link',
     |     'bin/afya cache:clear',
@@ -136,7 +155,7 @@ return [
     |     'chmod -R 775 storage bootstrap/cache',
     | ],
     */
-    'custom_commands' => [
+    'after_commands' => [
         // 'npm run build && php artisan storage:link',
         // 'bin/afya cache:clear',
         // 'chmod -R 775 storage bootstrap/cache',
