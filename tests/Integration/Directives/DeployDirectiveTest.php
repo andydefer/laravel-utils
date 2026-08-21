@@ -555,6 +555,101 @@ final class DeployDirectiveTest extends IntegrationTestCase
     }
 
     // ============================================================
+    // TESTS POUR POST-DEPLOYMENT OPTIMIZATION
+    // ============================================================
+
+    public function test_deploy_executes_post_deployment_optimization(): void
+    {
+        $command = 'o2switch:deploy --force --dry-run';
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $this->assertStringContainsString('📦 1. php artisan storage:link', $response->output);
+        $this->assertStringContainsString('📦 2. npm run build', $response->output);
+        $this->assertStringContainsString('📦 3. php artisan cache:clear', $response->output);
+        $this->assertStringContainsString('📦 4. php artisan config:clear', $response->output);
+        $this->assertStringContainsString('📦 5. php artisan route:clear', $response->output);
+        $this->assertStringContainsString('📦 6. php artisan view:clear', $response->output);
+        $this->assertStringContainsString('📦 7. php artisan config:cache', $response->output);
+        $this->assertStringContainsString('📦 8. php artisan route:cache', $response->output);
+        $this->assertStringContainsString('📦 9. php artisan view:cache', $response->output);
+        $this->assertStringContainsString('Executing post-deployment optimization...', $response->output);
+    }
+
+    public function test_deploy_skips_post_deployment_optimization_with_flag(): void
+    {
+        $command = 'o2switch:deploy --force --dry-run --skip-post-optimization';
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        // ✅ Vérifier que le skip est affiché
+        $this->assertStringContainsString('⏭️  Skipping post-deployment optimization (--skip-post-optimization enabled)', $response->output);
+
+        // ✅ Vérifier le format SPÉCIFIQUE de la post-optimization (avec numéros)
+        $this->assertStringNotContainsString('📦 1. php artisan storage:link', $response->output);
+        $this->assertStringNotContainsString('📦 2. npm run build', $response->output);
+        $this->assertStringNotContainsString('📦 7. php artisan config:cache', $response->output);
+    }
+
+    public function test_deploy_post_optimization_shows_dry_run_message(): void
+    {
+        $command = 'o2switch:deploy --force --dry-run';
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $this->assertStringContainsString('🔍 DRY RUN - Would execute optimization commands:', $response->output);
+        $this->assertStringContainsString('📦 1. php artisan storage:link', $response->output);
+        $this->assertStringContainsString('📦 2. npm run build', $response->output);
+        $this->assertStringContainsString('📦 7. php artisan config:cache', $response->output);
+    }
+
+    public function test_deploy_post_optimization_shows_execution_order(): void
+    {
+        $command = 'o2switch:deploy --force --dry-run';
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = strip_ansi($response->output);
+        $this->assertStringContainsString('📦 1. php artisan storage:link', $output);
+        $this->assertStringContainsString('📦 2. npm run build', $output);
+        $this->assertStringContainsString('📦 3. php artisan cache:clear', $output);
+        $this->assertStringContainsString('📦 4. php artisan config:clear', $output);
+        $this->assertStringContainsString('📦 5. php artisan route:clear', $output);
+        $this->assertStringContainsString('📦 6. php artisan view:clear', $output);
+        $this->assertStringContainsString('📦 7. php artisan config:cache', $output);
+        $this->assertStringContainsString('📦 8. php artisan route:cache', $output);
+        $this->assertStringContainsString('📦 9. php artisan view:cache', $output);
+    }
+
+    public function test_deploy_post_optimization_with_all_flags(): void
+    {
+        $command = 'o2switch:deploy --force --verbose --dry-run';
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $this->assertStringContainsString('📦 1. php artisan storage:link', $response->output);
+        $this->assertStringContainsString('📦 2. npm run build', $response->output);
+        $this->assertStringContainsString('📦 7. php artisan config:cache', $response->output);
+        $this->assertStringContainsString('Executing post-deployment optimization...', $response->output);
+    }
+
+    public function test_deploy_summary_shows_post_optimization_commands_count(): void
+    {
+        $command = 'o2switch:deploy --force --dry-run';
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = strip_ansi($response->output);
+        $this->assertMatchesRegularExpression('/Commands\s*:\s*\d+/', $output);
+    }
+
+    // ============================================================
     // TESTS DE LA COMMANDE COMPLÈTE
     // ============================================================
 
@@ -593,6 +688,48 @@ final class DeployDirectiveTest extends IntegrationTestCase
         $this->assertStringContainsString('php artisan config:cache', $output);
         $this->assertStringContainsString('Would execute: ping', $output);
         $this->assertStringContainsString('Would execute: echo "After"', $output);
+        $this->assertStringContainsString('📦 1. php artisan storage:link', $output);
+        $this->assertStringContainsString('📦 2. npm run build', $output);
+        $this->assertStringContainsString('📦 7. php artisan config:cache', $output);
+        $this->assertStringContainsString('✅ Dry run completed successfully!', $output);
+        $this->assertStringContainsString('📊 Summary:', $output);
+        $this->assertStringContainsString('🎉 Deployment completed successfully!', $output);
+    }
+
+    public function test_deploy_with_skip_post_optimization_in_full_flow(): void
+    {
+        Config::set('utils.before_commands', [
+            'echo "Before"',
+        ]);
+
+        Config::set('utils.after_commands', [
+            'echo "After"',
+        ]);
+
+        Config::set('utils.pipelines', [
+            'ping',
+        ]);
+
+        $this->app->singleton(UtilsConfigInterface::class, function ($app) {
+            return new UtilsConfig($app['config']);
+        });
+
+        $command = 'o2switch:deploy --force --verbose --dry-run --skip-post-optimization';
+        $response = $this->service->run($command);
+
+        $this->assertSame(ExitCode::SUCCESS, $response->exit_code);
+
+        $output = strip_ansi($response->output);
+
+        $this->assertStringContainsString('🚀 O2SWITCH DEPLOYMENT', $output);
+        $this->assertStringContainsString('Would execute: echo "Before"', $output);
+        $this->assertStringContainsString('git fetch origin main', $output);
+        $this->assertStringContainsString('Would execute: ping', $output);
+        $this->assertStringContainsString('Would execute: echo "After"', $output);
+        $this->assertStringContainsString('⏭️  Skipping post-deployment optimization (--skip-post-optimization enabled)', $output);
+        $this->assertStringNotContainsString('📦 1. php artisan storage:link', $output);
+        $this->assertStringNotContainsString('📦 2. npm run build', $output);
+        $this->assertStringNotContainsString('📦 7. php artisan config:cache', $output);
         $this->assertStringContainsString('✅ Dry run completed successfully!', $output);
         $this->assertStringContainsString('📊 Summary:', $output);
         $this->assertStringContainsString('🎉 Deployment completed successfully!', $output);

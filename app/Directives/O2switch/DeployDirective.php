@@ -14,6 +14,7 @@ use AndyDefer\LaravelUtils\Operations\DeployCodeOperation;
 use AndyDefer\LaravelUtils\Operations\ExecuteAfterCommandsOperation;
 use AndyDefer\LaravelUtils\Operations\ExecuteBeforeCommandsOperation;
 use AndyDefer\LaravelUtils\Operations\ExecutePipelinesOperation;
+use AndyDefer\LaravelUtils\Operations\ExecutePostDeploymentOptimizationOperation;
 use AndyDefer\LaravelUtils\Operations\ExportAssetsOperation;
 use AndyDefer\LaravelUtils\Operations\SetupDependenciesOperation;
 use AndyDefer\LaravelUtils\Operations\SetupEnvironmentOperation;
@@ -44,7 +45,8 @@ final class DeployDirective extends AbstractDirective
                 {--force-export}#"Force export: overwrite existing files on remote"
                 {--skip-export}#"Skip assets export step"
                 {--skip-before}#"Skip before-commands execution"
-                {--skip-after}#"Skip after-commands execution"';
+                {--skip-after}#"Skip after-commands execution"
+                {--skip-post-optimization}#"Skip post-deployment optimization"';
     }
 
     public function getAliases(): StringTypedCollection
@@ -95,6 +97,7 @@ final class DeployDirective extends AbstractDirective
         $skipExport = $this->getFlag('skip-export');
         $skipBefore = $this->getFlag('skip-before');
         $skipAfter = $this->getFlag('skip-after');
+        $skipPostOptimization = $this->getFlag('skip-post-optimization');
 
         $assets = $this->config->getExportAssets();
         $trackerBasePath = $this->config->getExportTrackerBasePath();
@@ -288,6 +291,25 @@ final class DeployDirective extends AbstractDirective
             $this->console->info('⏭️  Skipping after-commands (--skip-after enabled)');
         }
 
+        // ✅ Execute POST-DEPLOYMENT OPTIMIZATION
+        if (! $skipPostOptimization) {
+            $postOptimizationResult = ExecutePostDeploymentOptimizationOperation::handle(
+                $this->sshService,
+                $this->deploymentConfig['remote_path'],
+                $dryRun,
+                $this->console
+            );
+
+            if (! $postOptimizationResult->success) {
+                $duration = microtime(true) - $this->contextGet('start_time');
+                DeploymentUI::displayResult($this->console, $postOptimizationResult, $duration);
+
+                return ExitCode::FAILURE;
+            }
+        } elseif ($this->console) {
+            $this->console->info('⏭️  Skipping post-deployment optimization (--skip-post-optimization enabled)');
+        }
+
         $duration = microtime(true) - $this->contextGet('start_time');
 
         $mergedCommands = $deployResult->commands_executed
@@ -308,6 +330,10 @@ final class DeployDirective extends AbstractDirective
 
         if (! $skipAfter && isset($afterCommandsResult)) {
             $mergedCommands = $mergedCommands->merge($afterCommandsResult->commands_executed);
+        }
+
+        if (! $skipPostOptimization && isset($postOptimizationResult)) {
+            $mergedCommands = $mergedCommands->merge($postOptimizationResult->commands_executed);
         }
 
         $finalResult = DeploymentResultRecord::from([
