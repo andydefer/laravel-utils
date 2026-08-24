@@ -65,7 +65,7 @@ final class ExecutePipelinesOperation
                     continue;
                 }
 
-                $remoteCommand = "cd {$remotePath} && php {$binaryPath} {$pipeline}";
+                $remoteCommand = "cd {$remotePath} && {$binaryPath} {$pipeline}";
                 $remoteCommands[] = $remoteCommand;
 
                 if ($console) {
